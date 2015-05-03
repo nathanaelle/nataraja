@@ -1,0 +1,44 @@
+[internal]
+#	optional
+Owner			= "random string for logs"
+
+#	optional
+Project			= "random string for logs"
+
+[[Serve]]
+Zones			= [ "dest1.zone1.tld", ".wildcadr_subzone.zone2.tld" ]
+
+#	optional
+StrictTransportSecurity	= "non default HSTS configuration options"
+
+#	optional
+XFrameOptions		= "non default X-Frame-Options"
+
+#	optional
+XContentTypeOptions	= "non default X-Content-Type-Options"
+
+#	optional
+XDownloadOptions	= "non default X-Download-Options"
+
+#	optional
+XXSSProtection		= "non default X-XSS-Protection"
+
+#	optional
+PublicKeyPins		= "non default Public-Key-Pins"
+
+#	optional
+ContentSecurityPolicy	= "non default CSP"
+
+#	optional subsection
+  [Serve.TLS]
+	Key		= "/path/to/key"
+	Cert		= "/path/to/cert"
+
+
+
+#
+# List of 301 redirections
+#
+[[Redirect]]
+To			= "destination.zone3.tld"
+From			= [ "host.zone4.tld", ".wildcard_subhost.zone5.tld" ]

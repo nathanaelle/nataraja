@@ -1,0 +1,19 @@
+#
+#	This field is used to discriminate different instances in syslog
+#
+Id		= "default"
+
+#
+#	List of IPv4 and IPv6 to listen to
+#
+Listen		= [ "127.0.0.1", "::1" ]
+
+#
+#	This field contain the URL of the server nataraja will forward to
+#
+Proxied		= "http://host.tld/"
+
+#
+#	Path to the directory containing the vhosts
+#
+IncludeVhosts	= "/path/to/vhosts"
