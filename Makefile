@@ -1,17 +1,16 @@
-
-
-OS=linux
-ARCH=amd64
-
+# basic Makefile
 
 .PHONY: build
 
+GOOS=$(shell go env GOOS)
 
-build:
+all:	build
+
+update:
 	go get -u github.com/bradfitz/http2
 	go get -u github.com/naoina/toml
-	go get -u github.com/spacemonkeygo/openssl
 	go get -u gopkg.in/fsnotify.v1
 	go get -u golang.org/x/crypto/ocsp
 
-	GOOS=$(OS) GOARCH=$(ARCH) go build -o nataraja.linux src/*.go
+build:
+	go build -o nataraja.${GOOS} src/*.go
