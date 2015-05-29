@@ -60,7 +60,6 @@ func NewConfig(file string, parser func(string,interface{}), sl *syslog.Syslog )
 
 		tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
 		tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-		tls.TLS_FALLBACK_SCSV,
 	}
 
 	conf.tls_config.PreferServerCipherSuites	= true
@@ -256,6 +255,10 @@ func (c *Config) Routing(read_conf sync.Locker) func(*http.Request,*rp.Datalog) 
 
 		if servable.Redirect != "" {
 			t := *(req.URL)
+			switch req.TLS {
+				case	nil:	t.Scheme="http"
+				default:	t.Scheme="https"
+			}
 			t.Host	= servable.Redirect
 			return &rp.Status { http.StatusMovedPermanently,  t.String() }, header
 		}
