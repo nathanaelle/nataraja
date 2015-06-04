@@ -14,7 +14,7 @@ import (
 	"encoding/base64"
 	"golang.org/x/crypto/ocsp"
 	"net/http"
-
+	"net"
 	//"log"
 	//"time"
 	//"runtime/debug"
@@ -159,6 +159,22 @@ func (cp *CertPair)PKP() string {
 
 
 
+func needs_panic(err error) bool {
+	if err == nil	{
+		return false
+	}
+
+	if nerr,ok := err.(net.Error); ok {
+		return !(nerr.Timeout() || nerr.Temporary());
+	}
+
+	return true
+}
+
+
+
+
+
 
 func get_or_post_OCSP(url string, mime string, data []byte) []byte {
 	var	err	error
@@ -168,8 +184,11 @@ func get_or_post_OCSP(url string, mime string, data []byte) []byte {
 
 	if len(get_url)<255 {
 		rsp,err	= http.Get(get_url)
-		if(err != nil) {
-			panic(err)
+
+		if err!= nil {
+			if needs_panic(err) {
+				panic(err)
+			}
 			return []byte{}
 		}
 		//log.Printf("\n-G----\n%s\n%+v %+v\n----\n\n", get_url, rsp.Status, rsp.Header)
@@ -191,8 +210,10 @@ func get_or_post_OCSP(url string, mime string, data []byte) []byte {
 	if need_post {
 		rsp,err	= http.Post(url, mime, bytes.NewReader(data))
 		//log.Printf("\n-P----\n%+v %+v\n----\n\n", rsp.Status, rsp.Header)
-		if(err != nil) {
-			panic(err)
+		if err!= nil {
+			if needs_panic(err) {
+				panic(err)
+			}
 			return []byte{}
 		}
 	}
@@ -200,7 +221,9 @@ func get_or_post_OCSP(url string, mime string, data []byte) []byte {
 
 	body,err:= ioutil.ReadAll(rsp.Body)
 	if err!= nil {
-		panic(err)
+		if needs_panic(err) {
+			panic(err)
+		}
 		return []byte{}
 	}
 	return body
