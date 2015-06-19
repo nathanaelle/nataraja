@@ -3,6 +3,7 @@ package	vhost
 import (
 	"../types"
 	"os"
+	"io"
 	"io/ioutil"
 	"strconv"
 	"bytes"
@@ -164,8 +165,12 @@ func needs_panic(err error) bool {
 		return false
 	}
 
+	if err == io.EOF {
+		return false
+	}
+
 	if nerr,ok := err.(net.Error); ok {
-		return !(nerr.Timeout() || nerr.Temporary());
+		return !(nerr.Timeout() || nerr.Temporary())
 	}
 
 	return true
