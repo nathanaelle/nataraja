@@ -21,7 +21,7 @@ import (
 
 
 const	MIN_STAPLE_SIZE	= 10
-var issuers map[string][]byte = make(map[string][]byte,5)
+var issuers map[string]*x509.Certificate = make(map[string]*x509.Certificate,100)
 
 type CertPair struct {
 	Cert	types.Path
@@ -64,13 +64,14 @@ func (cp *CertPair)IsEnabled() bool {
 				for _,issuing := range cert.IssuingCertificateURL {
 					switch issuer, ok := issuers[issuing]; ok {
 						case true:
-							cp.kp.Certificate = append(cp.kp.Certificate, issuer)
+							cp.kp.Certificate = append(cp.kp.Certificate, issuer.Raw)
+							stack = append(stack, *issuer)
 
 						case false:
 							issuer, err := load_issuer(issuing)
 							if err == nil {
 								cp.kp.Certificate = append(cp.kp.Certificate, issuer.Raw)
-								issuers[issuing] = issuer.Raw
+								issuers[issuing] = issuer
 								stack = append(stack, *issuer)
 							}
 					}
@@ -125,20 +126,15 @@ func (cp *CertPair)OCSP() (err error) {
 
 
 func load_issuer(issuing string) (*x509.Certificate, error) {
-	issuer, ok := issuers[issuing]
+	resp, err	:= http.Get(issuing)
+	defer	resp.Body.Close()
+	if err!= nil {
+		return nil,err
+	}
 
-	if !ok {
-		resp, err	:= http.Get(issuing)
-		defer	resp.Body.Close()
-		if err!= nil {
-			return nil,err
-		}
-
-		issuer,err	= ioutil.ReadAll(resp.Body)
-		if err!= nil {
-			return nil,err
-		}
-		issuers[issuing] = issuer
+	issuer,err	:= ioutil.ReadAll(resp.Body)
+	if err!= nil {
+		return nil,err
 	}
 
 	cert,err	:= x509.ParseCertificate(issuer)
