@@ -4,21 +4,19 @@ import (
 	"../types"
 	"os"
 	"io"
-	"io/ioutil"
-	"strconv"
+	"net"
 	"bytes"
 	"crypto"
+	"strconv"
+	"net/url"
+	"net/http"
+	"io/ioutil"
 	"crypto/tls"
 	"crypto/x509"
-	"crypto/sha256"
 	"encoding/pem"
+	"crypto/sha256"
 	"encoding/base64"
 	"golang.org/x/crypto/ocsp"
-	"net/http"
-	"net"
-	//"log"
-	//"time"
-	//"runtime/debug"
 )
 
 
@@ -64,13 +62,17 @@ func (cp *CertPair)IsEnabled() bool {
 				cert	:= stack[0]
 				stack	=  stack[1:]
 				for _,issuing := range cert.IssuingCertificateURL {
-					if _, ok := issuers[issuing]; !ok {
-						issuer, err := load_issuer(issuing)
-						if err == nil {
-							cp.kp.Certificate = append(cp.kp.Certificate, issuer.Raw)
-							issuers[issuing] = issuer.Raw
-							stack = append(stack, *issuer)
-						}
+					switch issuer, ok := issuers[issuing]; ok {
+						case true:
+							cp.kp.Certificate = append(cp.kp.Certificate, issuer)
+
+						case false:
+							issuer, err := load_issuer(issuing)
+							if err == nil {
+								cp.kp.Certificate = append(cp.kp.Certificate, issuer.Raw)
+								issuers[issuing] = issuer.Raw
+								stack = append(stack, *issuer)
+							}
 					}
 				}
 
@@ -169,8 +171,14 @@ func needs_panic(err error) bool {
 		return false
 	}
 
-	if nerr,ok := err.(net.Error); ok {
-		return !(nerr.Timeout() || nerr.Temporary())
+	switch err.(type) {
+		case net.Error:
+			t_err := err.(net.Error)
+			return !(t_err.Timeout() || t_err.Temporary())
+
+		case *url.Error:
+			t_err := err.(*url.Error).Err.(net.Error)
+			return !(t_err.Timeout() || t_err.Temporary())
 	}
 
 	return true
