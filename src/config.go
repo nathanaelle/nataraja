@@ -216,6 +216,14 @@ func (c *Config) Routing(read_conf sync.Locker) func(*http.Request,*cache.Datalo
 
 		header := make(http.Header)
 
+		if req.ProtoMajor < 1 {
+			return &cache.Status { http.StatusBadRequest, "Obsolete Pre 1.0 Protocol" }, header, c.ToProxy()
+		}
+
+		if req.ProtoMajor == 1 && req.ProtoMinor < 1 {
+			return &cache.Status { http.StatusBadRequest, "Obsolete 1.0 Protocol" }, header, c.ToProxy()
+		}
+
 		if req.Host == "" {
 			return &cache.Status { http.StatusBadRequest, "No [Host:]" }, header, c.ToProxy()
 		}
