@@ -283,16 +283,20 @@ func Header_in2out(dst http.Header, headers ...http.Header) {
 				// Some Security by Obscurity
 				case	"Server", "X-Powered-By":
 
-				// Nataraja's job
-				case	"Accept-Ranges", "Public-Key-Pins", "StrictTransportSecurity":
-
 				// really old and cargo culted header
 				case "Pragma":
 
-				case	"X-Frame-Options":
+				// Nataraja's job - enforce the last only
+				case	"Accept-Ranges", "Public-Key-Pins", "StrictTransportSecurity","X-XSS-Protection":
+					for _, v := range vv {
+						dst.Set(k, v)
+					}
+
+				// enforce only if not already set
+				case	"X-Frame-Options","X-Content-Type-Options","X-Download-Options","Content-Security-Policy":
 					if _,ok := dst[k]; !ok {
 						for _, v := range vv {
-							dst.Add(k, v)
+							dst.Set(k, v)
 						}
 					}
 
