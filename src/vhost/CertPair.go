@@ -127,10 +127,10 @@ func (cp *CertPair)OCSP() (err error) {
 
 func load_issuer(issuing string) (*x509.Certificate, error) {
 	resp, err	:= http.Get(issuing)
-	defer	resp.Body.Close()
 	if err!= nil {
 		return nil,err
 	}
+	defer	resp.Body.Close()
 
 	issuer,err	:= ioutil.ReadAll(resp.Body)
 	if err!= nil {
@@ -201,6 +201,7 @@ func get_or_post_OCSP(url string, mime string, data []byte) []byte {
 			return []byte{}
 		}
 		//log.Printf("\n-G----\n%s\n%+v %+v\n----\n\n", get_url, rsp.Status, rsp.Header)
+		defer rsp.Body.Close()
 	}
 
 	need_post	:= false
@@ -225,8 +226,8 @@ func get_or_post_OCSP(url string, mime string, data []byte) []byte {
 			}
 			return []byte{}
 		}
+		defer rsp.Body.Close()
 	}
-	defer rsp.Body.Close()
 
 	body,err:= ioutil.ReadAll(rsp.Body)
 	if err!= nil {

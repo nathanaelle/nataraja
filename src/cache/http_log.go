@@ -1,4 +1,4 @@
-package	reverseproxy
+package	cache
 
 
 import (
@@ -24,6 +24,7 @@ type	Datalog	struct {
 	Referer		string
 	UserAgent	string
 	ContentType	string
+	BodySize	int64
 }
 
 

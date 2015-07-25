@@ -16,27 +16,32 @@ import (
 	"./types"
 	"./vhost"
 	"./syslog"
-	rp	"./reverseproxy"
-
+	"./cache"
 )
 
 
-type	Config	struct {
-	Id		string
-	Listen		[]types.IpAddr
-	Proxied		types.URL
-	IncludeVhosts	types.Path
+type	(
 
 
-	refreshOCSP	time.Duration
-	tls_config	*tls.Config
-	serverpairs	[]*vhost.CertPair
-	syslog		*syslog.Syslog
-	log		*log.Logger
+	Config	struct {
+		Id		string
+		Listen		[]types.IpAddr
+		Proxied		types.URL
+		IncludeVhosts	types.Path
+		Cache		*cache.Cache
 
-	file_zones	map[string][]string
-	servable	map[string]vhost.Servable
-}
+
+		refreshOCSP	time.Duration
+		tls_config	*tls.Config
+		serverpairs	[]*vhost.CertPair
+		syslog		*syslog.Syslog
+		log		*log.Logger
+
+		file_zones	map[string][]string
+		servable	map[string]vhost.Servable
+	}
+
+)
 
 
 func NewConfig(file string, parser func(string,interface{}), sl *syslog.Syslog ) *Config {
@@ -142,7 +147,6 @@ func (c *Config) scan_OCSP(write_conf sync.Locker) {
 
 
 
-
 func (c *Config) TLS() (*tls.Config) {
 	if len(c.serverpairs)==0 {
 		c.log.Println("No TLS conf detected")
@@ -203,37 +207,37 @@ func (c *Config) ToProxy() url.URL {
 }
 
 
-func (c *Config) Routing(read_conf sync.Locker) func(*http.Request,*rp.Datalog) (*rp.Status,http.Header) {
-	return func(req *http.Request, datalog *rp.Datalog) (*rp.Status, http.Header) {
+func (c *Config) Routing(read_conf sync.Locker) func(*http.Request,*cache.Datalog) (*cache.Status,http.Header,url.URL) {
+	return func(req *http.Request, datalog *cache.Datalog) (*cache.Status, http.Header,url.URL) {
 		read_conf.Lock()
 		defer read_conf.Unlock()
 
 		header := make(http.Header)
 
 		if req.Host == "" {
-			return &rp.Status { http.StatusBadRequest, "No [Host:]" }, header
+			return &cache.Status { http.StatusBadRequest, "No [Host:]" }, header, c.ToProxy()
 		}
 
 		if req.TLS != nil {
 			datalog.TLS = true
 			if req.TLS.ServerName == "" {
-				return &rp.Status { http.StatusBadRequest, "no tls servername" }, header
+				return &cache.Status { http.StatusBadRequest, "no tls servername" }, header, c.ToProxy()
 			}
 
 			if req.TLS.ServerName != req.Host {
-				return &rp.Status { http.StatusBadRequest, "tls server name mismatch [Host:]" }, header
+				return &cache.Status { http.StatusBadRequest, "tls server name mismatch [Host:]" }, header, c.ToProxy()
 			}
 		}
 
 		d	:= new(types.FQDN)
 		if d.Set(req.Host) != nil {
-			return &rp.Status { http.StatusBadRequest, "invalid [Host:]" }, header
+			return &cache.Status { http.StatusBadRequest, "invalid [Host:]" }, header, c.ToProxy()
 		}
 
 		servable, ok	:= c.found_servable( d.PathToRoot() )
 
 		if !ok {
-			return &rp.Status { http.StatusBadRequest, "unknown [Host:]" }, header
+			return &cache.Status { http.StatusBadRequest, "unknown [Host:]" }, header, c.ToProxy()
 		}
 
 		datalog.Owner	= servable.Owner
@@ -260,23 +264,23 @@ func (c *Config) Routing(read_conf sync.Locker) func(*http.Request,*rp.Datalog) 
 				default:	t.Scheme="https"
 			}
 			t.Host	= servable.Redirect
-			return &rp.Status { http.StatusMovedPermanently,  t.String() }, header
+			return &cache.Status { http.StatusMovedPermanently,  t.String() }, header, c.ToProxy()
 		}
 
 		if req.TLS == nil && servable.TLS {
 			t := *(req.URL)
 			t.Scheme= "https"
 			t.Host	= req.Host
-			return &rp.Status { http.StatusMovedPermanently,  t.String() }, header
+			return &cache.Status { http.StatusMovedPermanently,  t.String() }, header, c.ToProxy()
 		}
 
-		return nil,header
+		return nil,header, c.ToProxy()
 	}
 }
 
 
-func (c *Config) WAF() func(*http.Request) *rp.Status {
-	return func(req *http.Request) *rp.Status {
+func (c *Config) WAF() func(*http.Request) *cache.Status {
+	return func(req *http.Request) *cache.Status {
 
 		return nil
 	}

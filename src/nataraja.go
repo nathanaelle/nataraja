@@ -17,7 +17,7 @@ import (
 	"./hatcp"
 	"./types"
 	"./syslog"
-	rp	"./reverseproxy"
+	"./cache"
 
 	"github.com/naoina/toml"
 	"github.com/bradfitz/http2"
@@ -89,15 +89,17 @@ func (nat *Nataraja)ReadFlags()  {
 func (nat *Nataraja) GenerateServer() {
 	nat.slog = nat.syslog.SubSyslog(nat.config.Id)
 
+	mycache := &cache.Cache {
+		AccessLog	: nat.slog.Channel(syslog.LOG_NOTICE).Logger(""),
+		Prefilter	: nat.config.Routing(nat.conflock.RLocker()),
+		WAF		: nat.config.WAF(),
+		ErrorLog	: nat.slog.SubSyslog("proxy").Channel(syslog.LOG_WARNING).Logger("WARNING: "),
+	}
+
+	mycache.Init(&cache.PassThru {})
+
 	nat.server = &http.Server {
-		Handler			: &rp.ReverseProxy {
-			AccessLog	: nat.slog.Channel(syslog.LOG_NOTICE).Logger(""),
-			Target		: nat.config.ToProxy(),
-			FlushInterval	: 0 * time.Second,
-			Prefilter	: nat.config.Routing(nat.conflock.RLocker()),
-			WAF		: nat.config.WAF(),
-			ErrorLog	: nat.slog.SubSyslog("proxy").Channel(syslog.LOG_WARNING).Logger("WARNING: "),
-		},
+		Handler			: mycache,
 		ReadTimeout		: 10 * time.Minute,
 		WriteTimeout		: 10 * time.Minute,
 //		ConnState		: sessionLogger(),
@@ -106,6 +108,7 @@ func (nat *Nataraja) GenerateServer() {
 	}
 
 	http2.ConfigureServer( nat.server, &http2.Server {} )
+
 }
 
 func (nat *Nataraja) SignalHandler() {
