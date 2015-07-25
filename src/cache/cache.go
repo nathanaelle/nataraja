@@ -255,8 +255,11 @@ func Header_out2in(src http.Header) http.Header {
 			//
 			case "Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization", "Te", "Trailers", "Transfer-Encoding", "Upgrade":
 
-			// Nataraja Role
+			// Nataraja's job
 			case "Range":
+
+			// really old and cargo culted header
+			case "Pragma":
 
 			default:
 				for _, v := range vv {
@@ -277,7 +280,14 @@ func Header_in2out(dst http.Header, headers ...http.Header) {
 	for _,h := range headers {
 		for k, vv := range h {
 			switch	k {
+				// Some Security by Obscurity
 				case	"Server", "X-Powered-By":
+
+				// Nataraja's job
+				case	"Accept-Ranges", "Public-Key-Pins", "StrictTransportSecurity":
+
+				// really old and cargo culted header
+				case "Pragma":
 
 				case	"X-Frame-Options":
 					if _,ok := dst[k]; !ok {

@@ -45,7 +45,7 @@ func (s *Status)PrematureExit(rw http.ResponseWriter, datalog *Datalog) {
 
 	switch s.Code {
 		case	http.StatusBadRequest:
-			msg			:="400 Bad Request\n"+ s.Message +"\n"
+			msg			:="400 Bad Request\n\n"+ s.Message +"\n"
 			datalog.BodySize	= int64(len(msg))
 			datalog.ContentType	= "text/plain"
 
@@ -55,7 +55,7 @@ func (s *Status)PrematureExit(rw http.ResponseWriter, datalog *Datalog) {
 			io.WriteString(rw, msg)
 
 		case	http.StatusInternalServerError:
-			msg			:="500 Internal Server Error\n"+ s.Message +"\n"
+			msg			:="500 Internal Server Error\n\n"+ s.Message +"\n"
 			datalog.BodySize	= int64(len(msg))
 			datalog.ContentType	= "text/plain"
 
