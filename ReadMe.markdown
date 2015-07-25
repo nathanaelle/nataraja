@@ -35,9 +35,16 @@ Nataraja is a HTTP reverse proxy.
   * no cargo culting required for cipher suit
   * Automatic redirection to HTTPS if a certificate is provided
 
+### HTTP
+
+  * HTTP Range (not Multipart-Ranges)
+  * HTTP Cache Compliant
+  * wildcard zone redirection (aka redirect `*.some-zo.ne` to `another-zo.ne` )
+  * JSON message in AccessLog
+  * AccessLog and ErrorLog are syslog RFC 5424 compliant
+
 
 ## Configuration
-
 
 For the full options list see [conf/config.toml](conf/config.toml) for the main config and [conf/example.vhost](conf/example.vhost)
 
