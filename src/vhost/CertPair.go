@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"io/ioutil"
 	"crypto/tls"
+	"crypto/rsa"
+	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/pem"
 	"crypto/sha256"
@@ -21,76 +23,158 @@ import (
 
 
 const	MIN_STAPLE_SIZE	= 10
-var issuers map[string]*x509.Certificate = make(map[string]*x509.Certificate,100)
+var	issuers map[string]*x509.Certificate = make(map[string]*x509.Certificate,100)
 
-type CertPair struct {
+type	TLSConf struct {
 	Cert	types.Path
-	Key	types.Path
+	Keys	[]types.Path
 	cert	*x509.Certificate
 	kp	tls.Certificate
+
+	hpkp	[]string
 }
 
 
 
-func (cp *CertPair)Certificate() tls.Certificate {
+
+func (cp *TLSConf)Certificate() tls.Certificate {
 	return cp.kp
 }
 
 
-func (cp *CertPair)IsEnabled() bool {
+func (cp *TLSConf)IsEnabled() bool {
+	if cp.Cert == "" || len(cp.Keys) == 0 {
+		return false
+	}
+
+	if len(cp.kp.Certificate) > 0{
+		return true
+	}
+
 	var err error
+	keys	:= []crypto.PrivateKey {}
 
-	stack	:= make([]x509.Certificate,0,5)
+	crt,err		:= file2pem(cp.Cert.String())
+	if err != nil {
+		return false
+	}
 
-	if cp.Cert != "" && cp.Key != "" {
-		//log.Println("+ "+cp.Cert.String())
-		//debug.PrintStack()
-		if(len(cp.kp.Certificate) ==0){
-			crt		:= load_file(cp.Cert.String())
-			key		:= load_file(cp.Key.String())
-			cp.cert,err	= x509.ParseCertificate(load_pem(crt))
-			if err != nil {
-				return false
-			}
-			cp.kp,err	= tls.X509KeyPair(crt,key)
-			if err != nil {
-				return false
-			}
-			stack = append(stack, *cp.cert)
+	cp.kp.Certificate	= append( cp.kp.Certificate, crt.Bytes)
+	cp.cert,err		= x509.ParseCertificate(crt.Bytes)
+	if err != nil {
+		return false
+	}
 
-			for len(stack)>0 {
-				cert	:= stack[0]
-				stack	=  stack[1:]
-				for _,issuing := range cert.IssuingCertificateURL {
-					switch issuer, ok := issuers[issuing]; ok {
-						case true:
-							cp.kp.Certificate = append(cp.kp.Certificate, issuer.Raw)
-							stack = append(stack, *issuer)
+	for _,k := range cp.Keys {
+		var	key	crypto.PrivateKey
+		var	pk_der	[]byte
 
-						case false:
-							issuer, err := load_issuer(issuing)
-							if err == nil {
-								cp.kp.Certificate = append(cp.kp.Certificate, issuer.Raw)
-								issuers[issuing] = issuer
-								stack = append(stack, *issuer)
+		p,err		:= file2pem(k.String())
+		if err != nil {
+			continue
+		}
+
+		switch  p.Type {
+			case "PRIVATE KEY":
+				key,err := x509.ParsePKCS8PrivateKey(p.Bytes)
+				if err != nil {
+					continue
+				}
+				switch key := key.(type) {
+					case *rsa.PrivateKey:
+						rsa_key	:= key
+						pk_der,_= x509.MarshalPKIXPublicKey(&rsa_key.PublicKey)
+						if pub,ok := cp.cert.PublicKey.(*rsa.PublicKey); ok {
+							if pub.N.Cmp(rsa_key.PublicKey.N) == 0 && pub.E == rsa_key.PublicKey.E {
+								cp.kp.PrivateKey = key
 							}
+						}
+
+
+					case *ecdsa.PrivateKey:
+						ec_key		:= key
+						pk_der,_	= x509.MarshalPKIXPublicKey(&ec_key.PublicKey)
+						if pub,ok := cp.cert.PublicKey.(*ecdsa.PublicKey); ok {
+							if pub.X.Cmp(ec_key.PublicKey.X) == 0 && pub.Y.Cmp(ec_key.PublicKey.Y) == 0 {
+								cp.kp.PrivateKey = key
+							}
+						}
+
+					default:
+						continue
+				}
+
+
+			case "RSA PRIVATE KEY":
+				rsa_key,err := x509.ParsePKCS1PrivateKey(p.Bytes)
+				if err != nil {
+					continue
+				}
+				key	= rsa_key
+				pk_der,_= x509.MarshalPKIXPublicKey(&rsa_key.PublicKey)
+				if pub,ok := cp.cert.PublicKey.(*rsa.PublicKey); ok {
+					if pub.N.Cmp(rsa_key.PublicKey.N) == 0 && pub.E == rsa_key.PublicKey.E {
+						cp.kp.PrivateKey = key
 					}
 				}
 
-			}
-			cp.OCSP()
+
+			case "EC PRIVATE KEY":
+				ec_key,err := x509.ParseECPrivateKey(p.Bytes)
+				if err != nil {
+					continue
+				}
+				key	= ec_key
+				pk_der,_= x509.MarshalPKIXPublicKey(&ec_key.PublicKey)
+				if pub,ok := cp.cert.PublicKey.(*ecdsa.PublicKey); ok {
+					if pub.X.Cmp(ec_key.PublicKey.X) == 0 && pub.Y.Cmp(ec_key.PublicKey.Y) == 0 {
+						cp.kp.PrivateKey = key
+					}
+				}
+
+			default:
+				continue
 		}
-		return len(cp.cert.Raw)>0
+		hash	:= sha256.New()
+		hash.Write(pk_der)
+		cp.hpkp = append(cp.hpkp, base64.StdEncoding.EncodeToString(hash.Sum(nil)) )
+		keys	= append(keys, key)
+
 	}
-	return false
+
+
+	stack	:= make([]x509.Certificate,0,5)
+	stack = append(stack, *cp.cert)
+	for len(stack)>0 {
+		cert	:= stack[0]
+		stack	=  stack[1:]
+		for _,issuing := range cert.IssuingCertificateURL {
+			switch issuer, ok := issuers[issuing]; ok {
+				case true:
+					cp.kp.Certificate = append(cp.kp.Certificate, issuer.Raw)
+					stack = append(stack, *issuer)
+
+				case false:
+					issuer, err := load_issuer(issuing)
+					if err == nil {
+						cp.kp.Certificate = append(cp.kp.Certificate, issuer.Raw)
+						issuers[issuing] = issuer
+						stack = append(stack, *issuer)
+					}
+			}
+		}
+	}
+	cp.OCSP()
+
+	return len(cp.cert.Raw)>0
 }
 
 
-func (cp *CertPair)IsEnabledFor(zone string) bool {
+func (cp *TLSConf)IsEnabledFor(zone string) bool {
 	return	cp.IsEnabled() && cp.cert.VerifyHostname(zone) == nil
 }
 
-func (cp *CertPair)OCSP() (err error) {
+func (cp *TLSConf)OCSP() (err error) {
 	if cp.IsEnabled() && len(cp.kp.Certificate)>1 {
 		for _,ocsp_server := range cp.cert.OCSPServer {
 			for _,issuing := range cp.cert.IssuingCertificateURL {
@@ -146,14 +230,8 @@ func load_issuer(issuing string) (*x509.Certificate, error) {
 }
 
 
-func (cp *CertPair)PKP() string {
-	if !cp.IsEnabled() {
-		return ""
-	}
-
-	der,_	:= x509.MarshalPKIXPublicKey(cp.cert.PublicKey)
-	v	:= sha256.Sum256(der) //cert.RawSubjectPublicKeyInfo)
-	return base64.StdEncoding.EncodeToString(v[:])
+func (cp *TLSConf)PKP() []string {
+	return cp.hpkp
 }
 
 
@@ -243,16 +321,18 @@ func get_or_post_OCSP(url string, mime string, data []byte) []byte {
 
 
 
-func load_file(file string) []byte {
-	f,_	:= os.Open(file)
-	buf,_	:= ioutil.ReadAll(f)
+func file2pem(file string) (*pem.Block,error) {
+	f,err	:= os.Open(file)
+	if err != nil {
+		return nil,err
+	}
+
+	buf,err	:= ioutil.ReadAll(f)
 	f.Close()
-	return buf
-}
+	if err != nil {
+		return nil,err
+	}
 
-
-
-func load_pem(file []byte) []byte {
-	b,_	:= pem.Decode(file)
-	return b.Bytes
+	b,_	:= pem.Decode(buf)
+	return b,nil
 }

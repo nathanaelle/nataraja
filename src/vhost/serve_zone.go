@@ -4,13 +4,14 @@ import (
 	"../types"
 //	"log"
 //	"net/http"
+	"strings"
 )
 
 
 type	ServeZone	struct {
 	Zones			[]types.FQDN
 	Proxied			types.URL
-	TLS			*CertPair
+	TLS			*TLSConf
 
 	StrictTransportSecurity	string
 	XFrameOptions		string
@@ -114,8 +115,14 @@ func (s ServeZone)CSP() string  {
 
 func (s ServeZone)PKP(zone string) string {
 	if s.TLS.IsEnabledFor(string(zone)) {
+		ret := make([]string,0,5)
+		for _,pkp := range s.TLS.PKP() {
+			ret = append(ret,"pin-sha256=\""+pkp+"\"")
+		}
+
 		// 2 months
-		return "pin-sha256=\""+ s.TLS.PKP() +"\";max-age=5184000"
+		ret = append( ret, "max-age=5184000")
+		return strings.Join(ret,";")
 	}
 
 	return ""

@@ -13,7 +13,7 @@ type Vhost struct {
 		Project	string
 	}
 
-	serverpairs	[]*CertPair
+	serverpairs	[]*TLSConf
 	logger		*log.Logger
 
 	Serve		[]ServeZone
@@ -26,7 +26,7 @@ func New(file string, parser func(string,interface{}), logger *log.Logger ) *Vho
 	parser(file,vhost)
 
 	vhost.logger		= logger
-	vhost.serverpairs	= make([]*CertPair,0,len(vhost.Serve))
+	vhost.serverpairs	= make([]*TLSConf,0,len(vhost.Serve))
 
 	for _,v := range vhost.Serve {
 		if v.TLS != nil && v.TLS.IsEnabled() {
@@ -37,7 +37,7 @@ func New(file string, parser func(string,interface{}), logger *log.Logger ) *Vho
 	return vhost
 }
 
-func (vhost *Vhost)ServerPairs() ([]*CertPair) {
+func (vhost *Vhost)ServerPairs() ([]*TLSConf) {
 	return vhost.serverpairs
 }
 

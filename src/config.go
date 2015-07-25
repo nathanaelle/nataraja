@@ -33,7 +33,7 @@ type	(
 
 		refreshOCSP	time.Duration
 		tls_config	*tls.Config
-		serverpairs	[]*vhost.CertPair
+		serverpairs	[]*vhost.TLSConf
 		syslog		*syslog.Syslog
 		log		*log.Logger
 
@@ -48,7 +48,7 @@ func NewConfig(file string, parser func(string,interface{}), sl *syslog.Syslog )
 	conf		:= new( Config )
 	conf.tls_config	 = new(tls.Config)
 	conf.file_zones	 = make(map[string][]string)
-	conf.serverpairs = make( []*vhost.CertPair, 0, 1 )
+	conf.serverpairs = make( []*vhost.TLSConf, 0, 1 )
 	conf.syslog	 = sl
 	conf.log	 = sl.Channel(syslog.LOG_INFO).Logger("")
 	conf.servable	 = make( map[string]vhost.Servable )
@@ -157,11 +157,13 @@ func (c *Config) TLS() (*tls.Config) {
 
 	for _,v := range c.serverpairs {
 		if v != nil && v.IsEnabled() {
-			c.tls_config.Certificates = append(c.tls_config.Certificates, v.Certificate())
+			cert := v.Certificate()
+			c.tls_config.Certificates = append(c.tls_config.Certificates, cert)
 		}
 	}
 
 	c.tls_config.BuildNameToCertificate()
+
 	return c.tls_config
 }
 
