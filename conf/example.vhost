@@ -31,7 +31,7 @@ ContentSecurityPolicy	= "non default CSP"
 
 #	optional subsection
   [Serve.TLS]
-	Key		= "/path/to/key"
+	Keys		= "/path/to/key"
 	Cert		= "/path/to/cert"
 
 

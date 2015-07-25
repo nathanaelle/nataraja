@@ -29,7 +29,7 @@ Nataraja is a HTTP reverse proxy.
 ### HTTPS
 
   * automatic OCSP
-  * automatic HPKP
+  * automatic HPKP (multiple keys transparently handled)
   * automatic HSTS
   * Autofinding the Chain of trust to the root certificate
   * no cargo culting required for cipher suit
@@ -38,8 +38,30 @@ Nataraja is a HTTP reverse proxy.
 
 ## Configuration
 
-see [conf/config.toml] for the main config and [conf/example.vhost]
 
+For the full options list see [conf/config.toml](conf/config.toml) for the main config and [conf/example.vhost](conf/example.vhost)
+
+### Minimal config
+
+```
+Listen	= [ "127.0.0.1", "::1" ]
+Proxied	= "http://host.tld/"
+IncludeVhosts = "/path/to/vhosts"
+```
+
+### Minimal vhost with TLS
+
+```
+[[Serve]]
+zones		= [ "www.f.q.d.n" ]
+  [Serve.TLS]
+  keys		= [ "/path/privatekey" ]
+  cert		= "/path/cert"
+
+[[Redirect]]
+From		= [ "f.q.d.n" ]
+To		= "www.f.q.d.n"
+```
 
 ## License
 2-Clause BSD
@@ -49,7 +71,7 @@ see [conf/config.toml] for the main config and [conf/example.vhost]
 
   * write comments
   * clean some ugly stuff
-  * better handling of HPKP, HSTS, CSP configuration (don't be less secure than default)
+  * better handling of CSP configuration (don't be less secure than default)
   * Coping with self signed certificate
   * Coping with onion and local TLD
   * Coping with alert expiration
