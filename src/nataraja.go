@@ -39,19 +39,18 @@ func parser(file string, data interface{}) {
 
 
 type Nataraja struct {
-	conflock	*sync.RWMutex
 	syslog		*syslog.Syslog
 	slog		*syslog.Syslog
 	config		*Config
 	server		*http.Server
 	end		chan bool
 	wg		*sync.WaitGroup
+	cache		*cache.Cache
 
 }
 
 func SummonNataraja() (nat *Nataraja) {
 	nat		= new(Nataraja)
-	nat.conflock	= new(sync.RWMutex)
 	nat.wg		= new(sync.WaitGroup)
 	return
 }
@@ -82,24 +81,23 @@ func (nat *Nataraja)ReadFlags()  {
 		case false:	nat.syslog,_ =	syslog.New( syslog.Local(), priority, APP_NAME )
 	}
 
-	nat.config = NewConfig( conf_path.String(), parser, nat.syslog.SubSyslog("config") )
+	nat.config = NewConfig(conf_path.String(), parser, nat.syslog.SubSyslog("config") )
 }
 
 
 func (nat *Nataraja) GenerateServer() {
-	nat.slog = nat.syslog.SubSyslog(nat.config.Id)
-
-	mycache := &cache.Cache {
+	nat.slog	= nat.syslog.SubSyslog(nat.config.Id)
+	nat.cache	= &cache.Cache {
 		AccessLog	: nat.slog.Channel(syslog.LOG_NOTICE).Logger(""),
-		Prefilter	: nat.config.Routing(nat.conflock.RLocker()),
+		Configure	: nat.config.Configure(),
 		WAF		: nat.config.WAF(),
 		ErrorLog	: nat.slog.SubSyslog("proxy").Channel(syslog.LOG_WARNING).Logger("WARNING: "),
 	}
 
-	mycache.Init(&cache.PassThru {})
+	nat.cache.Init(&cache.PassThru {})
 
 	nat.server = &http.Server {
-		Handler			: mycache,
+		Handler			: nat,
 		ReadTimeout		: 10 * time.Minute,
 		WriteTimeout		: 10 * time.Minute,
 //		ConnState		: sessionLogger(),
@@ -108,8 +106,8 @@ func (nat *Nataraja) GenerateServer() {
 	}
 
 	http2.ConfigureServer( nat.server, &http2.Server {} )
-
 }
+
 
 func (nat *Nataraja) SignalHandler() {
 	nat.end		 = make(chan bool)
@@ -130,8 +128,8 @@ func (nat *Nataraja) SignalHandler() {
 		}
 	}()
 
-	go nat.config.ConfUpdater(nat.conflock,nat.end,nat.wg)
-	go nat.config.OCSPUpdater(nat.conflock,nat.end,nat.wg)
+	go nat.config.ConfUpdater(nat.end,nat.wg)
+	go nat.config.OCSPUpdater(nat.end,nat.wg)
 }
 
 
@@ -190,4 +188,94 @@ func (nat *Nataraja) forgeHTTPS(ip types.IpAddr) (net.Listener) {
 	sock	:= tls.NewListener( tcp, nat.server.TLSConfig )
 
 	return sock
+}
+
+
+
+func (nat *Nataraja)ServeHTTP(rw http.ResponseWriter, req *http.Request){
+	log	:= &cache.Datalog {
+		Owner		: "-",
+		Project		: "-",
+		Vhost		: "-",
+		Host		: req.Host,
+		TLS		: false,
+		Proto		: req.Proto,
+		Method		: req.Method,
+		Request		: req.URL.String(),
+		RemoteAddr	: req.RemoteAddr,
+		Referer		: req.Referer(),
+		UserAgent	: req.UserAgent(),
+		ContentType	: "-",
+	}
+	defer cache.LogHTTP(nat.cache.AccessLog, time.Now(), log )
+
+	if req.TLS != nil {
+		log.TLS = true
+	}
+
+	if req.ProtoMajor < 1 {
+		cache.BadRequest("Obsolete Pre 1.0 Protocol").PrematureExit(rw,log)
+		return
+	}
+
+	if req.ProtoMajor == 1 && req.ProtoMinor < 1 {
+		cache.BadRequest("Obsolete 1.0 Protocol").PrematureExit(rw,log)
+		return
+	}
+
+	if req.Host == "" {
+		cache.BadRequest("No [Host:]").PrematureExit(rw,log)
+		return
+	}
+
+	if req.TLS != nil {
+		if req.TLS.ServerName == "" {
+			cache.BadRequest("no tls servername").PrematureExit(rw,log)
+			return
+		}
+
+		if req.TLS.ServerName != req.Host {
+			cache.BadRequest("tls server name mismatch [Host:]").PrematureExit(rw,log)
+			return
+		}
+	}
+
+	d	:= new(types.FQDN)
+	if d.Set(req.Host) != nil {
+		cache.BadRequest("invalid [Host:]").PrematureExit(rw,log)
+		return
+	}
+
+	servable,ok	:= nat.config.SearchServable( d.PathToRoot() )
+	if !ok {
+		cache.BadRequest("unknown [Host:]").PrematureExit(rw,log)
+		return
+	}
+
+	if servable.Redirect != "" {
+		t := *(req.URL)
+		switch req.TLS {
+			case	nil:
+				t.Scheme="http"
+			default:
+				t.Scheme="https"
+				if servable.TLS {
+					rw.Header().Set("Strict-Transport-Security",servable.HSTS)
+				}
+		}
+		t.Host	= servable.Redirect
+		cache.MovedPermanently(t.String()).PrematureExit(rw,log)
+		return
+	}
+
+	if req.TLS == nil && servable.TLS {
+		t := *(req.URL)
+		t.Scheme= "https"
+		t.Host	= req.Host
+		cache.MovedPermanently(t.String()).PrematureExit(rw,log)
+		return
+	}
+
+	log.Status = -1
+	nat.cache.ServeHTTP(rw,req)
 }

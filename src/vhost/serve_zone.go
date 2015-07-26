@@ -33,6 +33,7 @@ func (sv ServeZone)Servable(Owner,Project string) []Servable {
 				ret = append(ret, Servable {
 					Owner	: Owner,
 					Project	: Project,
+					Proxied	: sv.Proxied,
 					Zone	: string(zone),
 					TLS	: true,
 					HSTS	: sv.HSTS(),
@@ -48,6 +49,7 @@ func (sv ServeZone)Servable(Owner,Project string) []Servable {
 				ret = append(ret, Servable {
 					Owner	: Owner,
 					Project	: Project,
+					Proxied	: sv.Proxied,
 					Zone	: string(zone),
 					TLS	: false,
 					HSTS	: "",
@@ -57,7 +59,6 @@ func (sv ServeZone)Servable(Owner,Project string) []Servable {
 					XXSSP	: sv.XXSSP(),
 					PKP	: "",
 				})
-
 		}
 	}
 

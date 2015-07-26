@@ -31,6 +31,7 @@ type	(
 		Cache		*cache.Cache
 
 
+		conflock	*sync.RWMutex
 		refreshOCSP	time.Duration
 		tls_config	*tls.Config
 		serverpairs	[]*vhost.TLSConf
@@ -45,14 +46,15 @@ type	(
 
 
 func NewConfig(file string, parser func(string,interface{}), sl *syslog.Syslog ) *Config {
-	conf		:= new( Config )
-	conf.tls_config	 = new(tls.Config)
-	conf.file_zones	 = make(map[string][]string)
-	conf.serverpairs = make( []*vhost.TLSConf, 0, 1 )
-	conf.syslog	 = sl
-	conf.log	 = sl.Channel(syslog.LOG_INFO).Logger("")
-	conf.servable	 = make( map[string]vhost.Servable )
-	conf.refreshOCSP = 1*time.Hour
+	conf		:=new( Config )
+	conf.conflock	= new(sync.RWMutex)
+	conf.tls_config	= new(tls.Config)
+	conf.file_zones	= make(map[string][]string)
+	conf.serverpairs= make( []*vhost.TLSConf, 0, 1 )
+	conf.syslog	= sl
+	conf.log	= sl.Channel(syslog.LOG_INFO).Logger("")
+	conf.servable	= make( map[string]vhost.Servable )
+	conf.refreshOCSP= 4*time.Hour
 
 	conf.tls_config.CipherSuites = []uint16{
 	//	tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
@@ -103,7 +105,7 @@ func NewConfig(file string, parser func(string,interface{}), sl *syslog.Syslog )
 }
 
 
-func (c *Config) ConfUpdater(write_conf sync.Locker,end <-chan bool,wg  *sync.WaitGroup) {
+func (c *Config) ConfUpdater(end <-chan bool,wg  *sync.WaitGroup) {
 	wg.Add(1)
 	for {
 		select {
@@ -116,7 +118,7 @@ func (c *Config) ConfUpdater(write_conf sync.Locker,end <-chan bool,wg  *sync.Wa
 }
 
 
-func (c *Config) OCSPUpdater(write_conf sync.Locker,end <-chan bool,wg  *sync.WaitGroup) {
+func (c *Config) OCSPUpdater(end <-chan bool,wg  *sync.WaitGroup) {
 	wg.Add(1)
 	defer wg.Done()
 
@@ -124,7 +126,9 @@ func (c *Config) OCSPUpdater(write_conf sync.Locker,end <-chan bool,wg  *sync.Wa
 	for {
 		select {
 			case <-ticker:
-				c.scan_OCSP(write_conf)
+				for _,cert := range c.serverpairs {
+					c.scan_OCSP(cert)
+				}
 
 			case <-end:
 				c.log.Println("OCSPUpdater: end")
@@ -134,13 +138,11 @@ func (c *Config) OCSPUpdater(write_conf sync.Locker,end <-chan bool,wg  *sync.Wa
 }
 
 
-func (c *Config) scan_OCSP(write_conf sync.Locker) {
-	write_conf.Lock()
-	defer write_conf.Unlock()
+func (c *Config) scan_OCSP(cert *vhost.TLSConf) {
+	c.conflock.Lock()
+	defer c.conflock.Unlock()
 
-	for _,cert := range c.serverpairs {
-		cert.OCSP()
-	}
+	cert.OCSP()
 }
 
 
@@ -194,7 +196,10 @@ func (conf *Config) AddVhost(file string, parser func(string,interface{}), logge
 }
 
 
-func (c *Config) found_servable(matches []string) (servable vhost.Servable, ok bool) {
+func (c *Config) SearchServable(matches []string) (servable vhost.Servable, ok bool) {
+	c.conflock.RLock()
+	defer c.conflock.RUnlock()
+
 	for _,possible_match := range matches {
 		servable, ok = c.servable[possible_match]
 		if ok {
@@ -209,51 +214,21 @@ func (c *Config) ToProxy() url.URL {
 }
 
 
-func (c *Config) Routing(read_conf sync.Locker) func(*http.Request,*cache.Datalog) (*cache.Status,http.Header,url.URL) {
-	return func(req *http.Request, datalog *cache.Datalog) (*cache.Status, http.Header,url.URL) {
-		read_conf.Lock()
-		defer read_conf.Unlock()
-
-		header := make(http.Header)
-
-		if req.ProtoMajor < 1 {
-			return &cache.Status { http.StatusBadRequest, "Obsolete Pre 1.0 Protocol" }, header, c.ToProxy()
-		}
-
-		if req.ProtoMajor == 1 && req.ProtoMinor < 1 {
-			return &cache.Status { http.StatusBadRequest, "Obsolete 1.0 Protocol" }, header, c.ToProxy()
-		}
-
-		if req.Host == "" {
-			return &cache.Status { http.StatusBadRequest, "No [Host:]" }, header, c.ToProxy()
-		}
-
+func (c *Config) Configure() func(*http.Request,*cache.Datalog) (http.Header,url.URL) {
+	return func(req *http.Request, datalog *cache.Datalog) (http.Header,url.URL) {
 		if req.TLS != nil {
 			datalog.TLS = true
-			if req.TLS.ServerName == "" {
-				return &cache.Status { http.StatusBadRequest, "no tls servername" }, header, c.ToProxy()
-			}
-
-			if req.TLS.ServerName != req.Host {
-				return &cache.Status { http.StatusBadRequest, "tls server name mismatch [Host:]" }, header, c.ToProxy()
-			}
 		}
 
-		d	:= new(types.FQDN)
-		if d.Set(req.Host) != nil {
-			return &cache.Status { http.StatusBadRequest, "invalid [Host:]" }, header, c.ToProxy()
-		}
-
-		servable, ok	:= c.found_servable( d.PathToRoot() )
-
-		if !ok {
-			return &cache.Status { http.StatusBadRequest, "unknown [Host:]" }, header, c.ToProxy()
-		}
+		d := new(types.FQDN)
+		d.Set(req.Host)
+		servable,_	:= c.SearchServable( d.PathToRoot() )
 
 		datalog.Owner	= servable.Owner
 		datalog.Project	= servable.Project
 		datalog.Vhost	= servable.Zone
 
+		header := make(http.Header)
 		header.Set("X-Frame-Options"		, servable.XFO	)
 		header.Set("X-Content-Type-Options"	, servable.XCTO	)
 		header.Set("X-Download-Options"		, servable.XDO	)
@@ -267,24 +242,12 @@ func (c *Config) Routing(read_conf sync.Locker) func(*http.Request,*cache.Datalo
 			}
 		}
 
-		if servable.Redirect != "" {
-			t := *(req.URL)
-			switch req.TLS {
-				case	nil:	t.Scheme="http"
-				default:	t.Scheme="https"
-			}
-			t.Host	= servable.Redirect
-			return &cache.Status { http.StatusMovedPermanently,  t.String() }, header, c.ToProxy()
+		default_proxy	:= url.URL(c.Proxied)
+		candidat_proxy	:= url.URL(servable.Proxied)
+		if candidat_proxy.Host == "" {
+			return header, default_proxy
 		}
-
-		if req.TLS == nil && servable.TLS {
-			t := *(req.URL)
-			t.Scheme= "https"
-			t.Host	= req.Host
-			return &cache.Status { http.StatusMovedPermanently,  t.String() }, header, c.ToProxy()
-		}
-
-		return nil,header, c.ToProxy()
+		return header, candidat_proxy
 	}
 }
 

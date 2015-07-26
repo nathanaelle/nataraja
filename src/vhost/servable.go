@@ -1,6 +1,7 @@
 package	vhost
 
 import (
+	"../types"
 )
 
 
@@ -8,6 +9,7 @@ type	Servable	struct {
 	Owner		string
 	Project		string
 	Zone		string
+	Proxied		types.URL
 
 	Redirect	string
 

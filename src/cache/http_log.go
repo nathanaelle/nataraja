@@ -33,7 +33,14 @@ func (d *Datalog)String() string  {
 	return string(raw)
 }
 
-func http_log(accesslog *log.Logger, start time.Time, datalog *Datalog)  {
+func LogHTTP(accesslog *log.Logger, start time.Time, datalog *Datalog)  {
+	if datalog == nil {
+		return
+	}
+	if datalog.Status < 0 {
+		return
+	}
+
 	datalog.Start	= start.Unix()
 	datalog.Duration= int64(time.Since(start)/time.Microsecond)
 	accesslog.Printf("%s", datalog.String() )

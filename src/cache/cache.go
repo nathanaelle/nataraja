@@ -27,7 +27,7 @@ type	Cache	struct {
 	// If nil, nothing is logged
 	AccessLog	*log.Logger
 
-	Prefilter	func(*http.Request,*Datalog)	(*Status,http.Header,url.URL)
+	Configure	func(*http.Request,*Datalog)	(http.Header,url.URL)
 	WAF		func(*http.Request)		*Status
 
 	pool		Pool
@@ -62,15 +62,11 @@ func (cache *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		ContentType	: "-",
 	}
 
-	defer http_log(cache.AccessLog, time.Now(), datalog )
+	defer LogHTTP(cache.AccessLog, time.Now(), datalog )
 
-	ret_status, injectHeaders, ProxyTarget := cache.Prefilter( req, datalog )
-	if ret_status != nil {
-		ret_status.PrematureExit(rw, datalog )
-		return
-	}
+	injectHeaders, ProxyTarget := cache.Configure( req, datalog )
 
-	ret_status = cache.WAF( req )
+	ret_status := cache.WAF( req )
 	if ret_status != nil {
 		ret_status.PrematureExit(rw, datalog )
 		return

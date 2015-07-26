@@ -8,6 +8,9 @@ Project			= "random string for logs"
 [[Serve]]
 Zones			= [ "dest1.zone1.tld", ".wildcadr_subzone.zone2.tld" ]
 
+# optional
+Proxied                 = "http://front.tld/"
+
 #	optional
 StrictTransportSecurity	= "non default HSTS configuration options"
 
