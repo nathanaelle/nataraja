@@ -233,11 +233,6 @@ func (nat *Nataraja)ServeHTTP(rw http.ResponseWriter, req *http.Request){
 			cache.BadRequest("no tls servername").PrematureExit(rw,log)
 			return
 		}
-
-		if req.TLS.ServerName != req.Host {
-			cache.BadRequest("tls server name mismatch [Host:]").PrematureExit(rw,log)
-			return
-		}
 	}
 
 	d	:= new(types.FQDN)
@@ -250,6 +245,14 @@ func (nat *Nataraja)ServeHTTP(rw http.ResponseWriter, req *http.Request){
 	if !ok {
 		cache.BadRequest("unknown [Host:]").PrematureExit(rw,log)
 		return
+	}
+
+	// This is an anoying bug...
+	// emilinate the situation at first connection
+	// can't cope with it if resumed
+	if req.TLS != nil && !req.TLS.DidResume && req.TLS.ServerName != req.Host {
+//		cache.BadRequest("tls server name mismatch [Host:]" + req.TLS.ServerName + " : " + req.Host).PrematureExit(rw,log)
+//		return
 	}
 
 	if servable.Redirect != "" {

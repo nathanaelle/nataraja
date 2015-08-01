@@ -51,6 +51,7 @@ func (s *Status)PrematureExit(rw http.ResponseWriter, datalog *Datalog) {
 
 			rw.Header().Set("Content-Length", strconv.FormatInt(datalog.BodySize,10))
 			rw.Header().Set("Content-Type", "text/plain")
+			rw.Header().Set("Connection", "close")
 			rw.WriteHeader(http.StatusBadRequest)
 			io.WriteString(rw, msg)
 
@@ -61,15 +62,18 @@ func (s *Status)PrematureExit(rw http.ResponseWriter, datalog *Datalog) {
 
 			rw.Header().Set("Content-Length", strconv.FormatInt(datalog.BodySize,10))
 			rw.Header().Set("Content-Type", "text/plain")
+			rw.Header().Set("Connection", "close")
 			rw.WriteHeader( http.StatusInternalServerError )
 			io.WriteString(rw, msg)
 
 		case	http.StatusMovedPermanently:
 			rw.Header().Set("Location", s.Message)
+			//rw.Header().Set("Connection", "close")
 			rw.WriteHeader( http.StatusMovedPermanently )
 
 		case	http.StatusRequestedRangeNotSatisfiable:
 			rw.Header().Set("Content-Range", s.Message)
+			rw.Header().Set("Connection", "close")
 			rw.WriteHeader( http.StatusRequestedRangeNotSatisfiable )
 
 		case	http.StatusNotModified:

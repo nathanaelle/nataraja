@@ -44,8 +44,6 @@ func (cache *Cache)Init(pool Pool) {
 
 
 
-
-
 func (cache *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	datalog	:= &Datalog {
 		Owner		: "-",
@@ -91,8 +89,12 @@ func (cache *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 }
 
 
+
+
+
 func serveContent(rw http.ResponseWriter,datalog *Datalog, source_header http.Header, injectHeaders http.Header, data *Entry, nobody bool) {
 
+	// Cache & Range & If-Range needed here
 	if s_ims, ok := source_header["If-Modified-Since"]; ok {
 		ims := httpDate2Time( s_ims[0], time.Unix(0,0) )
 		if !ims.Before(data.LastModified) {

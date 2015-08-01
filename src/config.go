@@ -11,12 +11,12 @@ import (
 	"io/ioutil"
 	"crypto/tls"
 
-//	"gopkg.in/fsnotify.v1"
-
 	"./types"
 	"./vhost"
 	"./syslog"
 	"./cache"
+
+	"gopkg.in/fsnotify.v1"
 )
 
 
@@ -54,7 +54,7 @@ func NewConfig(file string, parser func(string,interface{}), sl *syslog.Syslog )
 	conf.syslog	= sl
 	conf.log	= sl.Channel(syslog.LOG_INFO).Logger("")
 	conf.servable	= make( map[string]vhost.Servable )
-	conf.refreshOCSP= 4*time.Hour
+	conf.refreshOCSP= 3*time.Hour
 
 	conf.tls_config.CipherSuites = []uint16{
 	//	tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
@@ -79,25 +79,11 @@ func NewConfig(file string, parser func(string,interface{}), sl *syslog.Syslog )
 	exterminate(err)
 
 	for _,file := range files {
-		switch {
-			case file.IsDir():
-				is_vhost	:= false
-				vhost_dir,err	:= ioutil.ReadDir(path.Join(root_dir,file.Name()))
-				exterminate(err)
-				for _,vhost_file := range vhost_dir {
-					if vhost_file.Mode().IsRegular() && vhost_file.Name() == "config.vhost" {
-						is_vhost = true
-					}
-				}
-
-				if is_vhost {
-					conf.AddVhost(path.Join(root_dir,file.Name(),"config.vhost"), parser, sl.SubSyslog("vhost").Channel(syslog.LOG_INFO).Msgid(file.Name()).Logger("") )
-				}
-
-			case file.Mode().IsRegular():
-				if strings.HasSuffix(file.Name(), ".vhost") {
-					conf.AddVhost(path.Join(root_dir,file.Name()), parser, sl.SubSyslog("vhost").Channel(syslog.LOG_INFO).Msgid(file.Name()).Logger("") )
-				}
+		if !file.Mode().IsRegular() {
+			continue
+		}
+		if strings.HasSuffix(file.Name(), ".vhost") {
+			conf.AddVhost(path.Join(root_dir,file.Name()), parser, sl.SubSyslog("vhost").Channel(syslog.LOG_INFO).Msgid(file.Name()).Logger("") )
 		}
 	}
 
@@ -107,14 +93,35 @@ func NewConfig(file string, parser func(string,interface{}), sl *syslog.Syslog )
 
 func (c *Config) ConfUpdater(end <-chan bool,wg  *sync.WaitGroup) {
 	wg.Add(1)
+	defer wg.Done()
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		panic(err)
+	}
+	defer watcher.Close()
+
+	err = watcher.Add( c.IncludeVhosts.String() )
+	if err != nil {
+		panic(err)
+	}
+
 	for {
 		select {
+			case event := <-watcher.Events:
+				if event.Op&fsnotify.Write == fsnotify.Write {
+					// here broadcast reload conf
+				}
+
+			case err := <-watcher.Errors:
+				log.Println("error:", err)
+
 			case <-end:
 				c.log.Println("ConfUpdater: end")
 				return
+
 		}
 	}
-	defer wg.Done()
 }
 
 
@@ -126,9 +133,7 @@ func (c *Config) OCSPUpdater(end <-chan bool,wg  *sync.WaitGroup) {
 	for {
 		select {
 			case <-ticker:
-				for _,cert := range c.serverpairs {
-					c.scan_OCSP(cert)
-				}
+				c.scan_OCSP(new(sync.WaitGroup))
 
 			case <-end:
 				c.log.Println("OCSPUpdater: end")
@@ -138,15 +143,19 @@ func (c *Config) OCSPUpdater(end <-chan bool,wg  *sync.WaitGroup) {
 }
 
 
-func (c *Config) scan_OCSP(cert *vhost.TLSConf) {
+func (c *Config) scan_OCSP(wg  *sync.WaitGroup) {
 	c.conflock.Lock()
 	defer c.conflock.Unlock()
 
-	cert.OCSP()
+	for _,cert := range c.serverpairs {
+		go func(){
+			wg.Add(1)
+			defer wg.Done()
+			cert.OCSP()
+		}()
+	}
+	wg.Wait()
 }
-
-
-
 
 
 func (c *Config) TLS() (*tls.Config) {
@@ -168,11 +177,6 @@ func (c *Config) TLS() (*tls.Config) {
 
 	return c.tls_config
 }
-
-
-
-
-
 
 
 func (conf *Config) AddVhost(file string, parser func(string,interface{}), logger *log.Logger) {
@@ -207,10 +211,6 @@ func (c *Config) SearchServable(matches []string) (servable vhost.Servable, ok b
 		}
 	}
 	return vhost.Servable {}, false
-}
-
-func (c *Config) ToProxy() url.URL {
-	return url.URL(c.Proxied)
 }
 
 
