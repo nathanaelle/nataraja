@@ -9,7 +9,9 @@ import	(
 
 
 
-var UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.10; rv:40.0) Gecko/20100101 Firefox/40.0"
+var UA		= "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.10; rv:40.0) Gecko/20100101 Firefox/40.0"
+var BadUAbeg	= "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.10; rv:40.0) email Gecko/20100101 Firefox/40.0"
+var BadUAend	= "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.10; rv:40.0) wordpress Gecko/20100101 Firefox/40.0"
 
 
 var bad_robots = []string {
@@ -157,6 +159,83 @@ var bad_robots = []string {
 	"eo browse",
 	"cherrypicker",
 	"internet-exprorer",
+	"grabber",
+	"cgichk",
+	"bsqlbf",
+	"mozilla/4.0 (compatible)",
+	"sqlmap",
+	"mozilla/4.0 (compatible; msie 6.0; win32)",
+	"mozilla/5.0 sf//",
+	"nessus",
+	"arachni",
+	"metis",
+	"sql power injector",
+	"bilbo",
+	"absinthe",
+	"black widow",
+	"n-stealth",
+	"brutus",
+	"webtrends security analyzer",
+	"netsparker",
+	"python-httplib2",
+	"jaascois",
+	"pmafind",
+	".nasl",
+	"nsauditor",
+	"paros",
+	"dirbuster",
+	"pangolin",
+	"nmap nse",
+	"sqlninja",
+	"nikto",
+	"webinspect",
+	"blackwidow",
+	"grendel-scan",
+	"havij",
+	"w3af",
+	"hydra",
+	"super happy fun",
+	"psycheclone",
+	"grub crawler",
+	"core-project/",
+	"winnie poh",
+	"mozilla/4.0+(",
+	"email siphon",
+	"internet explorer",
+	"nutscrape/",
+	"mozilla/4.0(",
+	"missigua",
+	"libwww-perl",
+	"movable type",
+	"user",
+	"blogsearchbot-martin",
+	"emailsiphon",
+	"digger",
+	"8484 boston project",
+	"nutchcvs",
+	"pycurl",
+	"java 1.",
+	"isc systems irc",
+	"emailcollector",
+	"mj12bot/v1.0.8",
+	"trackback/",
+	"microsoft url",
+	"diamond",
+	"autoemailspider",
+	"lwp",
+	"pussycat",
+	"jakarta commons",
+	"java/1.",
+	"user-agent:",
+	"<sc",
+	"adwords",
+	"omniexplorer",
+	"wordpress",
+	"httpproxy",
+	"user agent:",
+	"ecollector",
+	"msie",
+	"cherrypicker",
 }
 
 
@@ -178,40 +257,92 @@ func Test_UserAgentIsClean(t *testing.T) {
 		t.Errorf("[%s] not found in [%s]", "mozilla/5.0", UA )
 	}
 
-	if !waf.BRI_UserAgentIsClean([]byte(strings.ToLower(UA))) {
-		t.Errorf("error found in [%s]", UA )
+
+	if !waf.GoSufArray_UserAgentIsClean([]byte(strings.ToLower(UA))) {
+		t.Errorf("error found in BRS [%s]", UA )
+	}
+
+	if waf.GoSufArray_UserAgentIsClean([]byte(strings.ToLower(BadUAbeg))) {
+		t.Errorf("error found in BRS [%s]", BadUAbeg )
+	}
+
+	if waf.GoSufArray_UserAgentIsClean([]byte(strings.ToLower(BadUAend))) {
+		t.Errorf("error found in BRS [%s]", BadUAend )
+	}
+
+
+	if !waf.BRS_UserAgentIsClean([]byte(strings.ToLower(UA))) {
+		t.Errorf("error found in BRS [%s]", UA )
+	}
+
+	if waf.BRS_UserAgentIsClean([]byte(strings.ToLower(BadUAbeg))) {
+		t.Errorf("error found in BRS [%s]", BadUAbeg )
+	}
+
+	if waf.BRS_UserAgentIsClean([]byte(strings.ToLower(BadUAend))) {
+		t.Errorf("error found in BRS [%s]", BadUAend )
 	}
 
 
 }
 
 
-func Benchmark_OLD_UserAgentIsClean(b *testing.B) {
+func Benchmark_GSA_UserAgentIsClean_validUA(b *testing.B) {
 	waf := new(WAF)
 	waf.load_bad_robots(bad_robots)
 
 	ua := []byte(strings.ToLower(UA))
 	for i := 0; i < b.N; i++ {
-		waf.OLD_UserAgentIsClean([]byte(ua))
+		waf.GoSufArray_UserAgentIsClean([]byte(ua))
 	}
 }
 
-func Benchmark_UserAgentIsClean(b *testing.B) {
+func Benchmark_GSA_UserAgentIsClean_begInvUA(b *testing.B) {
 	waf := new(WAF)
 	waf.load_bad_robots(bad_robots)
 
-	ua := []byte(strings.ToLower(UA))
+	ua := []byte(strings.ToLower(BadUAbeg))
 	for i := 0; i < b.N; i++ {
-		waf.UserAgentIsClean([]byte(ua))
+		waf.GoSufArray_UserAgentIsClean([]byte(ua))
 	}
 }
 
-func Benchmark_BRI_UserAgentIsClean(b *testing.B) {
+func Benchmark_GSA_UserAgentIsClean_endInvUA(b *testing.B) {
+	waf := new(WAF)
+	waf.load_bad_robots(bad_robots)
+
+	ua := []byte(strings.ToLower(BadUAend))
+	for i := 0; i < b.N; i++ {
+		waf.GoSufArray_UserAgentIsClean([]byte(ua))
+	}
+}
+
+func Benchmark_BRS_UserAgentIsClean_begInvUA(b *testing.B) {
+	waf := new(WAF)
+	waf.load_bad_robots(bad_robots)
+
+	ua := []byte(strings.ToLower(BadUAbeg))
+	for i := 0; i < b.N; i++ {
+		waf.BRS_UserAgentIsClean(ua)
+	}
+}
+
+func Benchmark_BRS_UserAgentIsClean_endInvUA(b *testing.B) {
+	waf := new(WAF)
+	waf.load_bad_robots(bad_robots)
+
+	ua := []byte(strings.ToLower(BadUAend))
+	for i := 0; i < b.N; i++ {
+		waf.BRS_UserAgentIsClean(ua)
+	}
+}
+
+func Benchmark_BRS_UserAgentIsClean_validUA(b *testing.B) {
 	waf := new(WAF)
 	waf.load_bad_robots(bad_robots)
 
 	ua := []byte(strings.ToLower(UA))
 	for i := 0; i < b.N; i++ {
-		waf.BRI_UserAgentIsClean(ua)
+		waf.BRS_UserAgentIsClean(ua)
 	}
 }
