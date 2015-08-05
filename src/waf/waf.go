@@ -118,8 +118,8 @@ func (waf *WAF)B__RS_UserAgentIsClean(UA []byte) bool {
 
 
 func (waf *WAF)BRS_UserAgentIsClean(UA []byte) bool {
-	entangled_states:= make([]s_state,0,len(waf.bad_robots)/10)
-	next_entangled	:= make([]s_state,0,len(waf.bad_robots)/10)
+	entangled_states:= make([]s_state,0,50)//len(waf.bad_robots)/10)
+	next_entangled	:= make([]s_state,0,50)//len(waf.bad_robots)/10)
 
 	for i,b := range UA[:] {
 		for _,robo := range entangled_states {

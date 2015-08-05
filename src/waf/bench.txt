@@ -1,3 +1,5 @@
+### without pre-allocated buffer
+
 PASS
 Benchmark_BRS_UserAgentIsClean_begInvUA   200000              5810 ns/op            1280 B/op          2 allocs/op
 Benchmark_BRS_UserAgentIsClean_endInvUA   300000              5651 ns/op            1280 B/op          2 allocs/op
@@ -9,3 +11,18 @@ Benchmark_GSA_UserAgentIsClean_begInvUA   200000              9078 ns/op        
 Benchmark_GSA_UserAgentIsClean_endInvUA    30000             54156 ns/op            1921 B/op         10 allocs/op
 Benchmark_GSA_UserAgentIsClean_OKlorem      1000           1236080 ns/op          102590 B/op         13 allocs/op
 Benchmark_GSA_UserAgentIsClean_badLorem     1000           1136072 ns/op          102597 B/op         14 allocs/op
+
+
+### with preallocated buffer
+
+PASS
+Benchmark_BRS_UserAgentIsClean_begInvUA   500000              3317 ns/op               0 B/op          0 allocs/op
+Benchmark_BRS_UserAgentIsClean_endInvUA   500000              3119 ns/op               0 B/op          0 allocs/op
+Benchmark_BRS_UserAgentIsClean_validUA    500000              3051 ns/op               0 B/op          0 allocs/op
+Benchmark_BRS_UserAgentIsClean_OKLorem     10000            218818 ns/op               6 B/op          0 allocs/op
+Benchmark_BRS_UserAgentIsClean_BadLorem    10000            166614 ns/op               7 B/op          0 allocs/op
+Benchmark_GSA_UserAgentIsClean_validUA     30000             52321 ns/op            1785 B/op          9 allocs/op
+Benchmark_GSA_UserAgentIsClean_begInvUA   200000              9177 ns/op            1792 B/op         10 allocs/op
+Benchmark_GSA_UserAgentIsClean_endInvUA    30000             55547 ns/op            1921 B/op         10 allocs/op
+Benchmark_GSA_UserAgentIsClean_OKlorem      1000           1262361 ns/op          102590 B/op         13 allocs/op
+Benchmark_GSA_UserAgentIsClean_badLorem     1000           1161506 ns/op          102598 B/op         14 allocs/op
