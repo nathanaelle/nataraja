@@ -1,0 +1,11 @@
+PASS
+Benchmark_BRS_UserAgentIsClean_begInvUA   200000              5810 ns/op            1280 B/op          2 allocs/op
+Benchmark_BRS_UserAgentIsClean_endInvUA   300000              5651 ns/op            1280 B/op          2 allocs/op
+Benchmark_BRS_UserAgentIsClean_validUA    300000              5528 ns/op            1280 B/op          2 allocs/op
+Benchmark_BRS_UserAgentIsClean_OKLorem     10000            204780 ns/op            1287 B/op          2 allocs/op
+Benchmark_BRS_UserAgentIsClean_BadLorem    10000            157083 ns/op            1286 B/op          2 allocs/op
+Benchmark_GSA_UserAgentIsClean_validUA     30000             50104 ns/op            1785 B/op          9 allocs/op
+Benchmark_GSA_UserAgentIsClean_begInvUA   200000              9078 ns/op            1792 B/op         10 allocs/op
+Benchmark_GSA_UserAgentIsClean_endInvUA    30000             54156 ns/op            1921 B/op         10 allocs/op
+Benchmark_GSA_UserAgentIsClean_OKlorem      1000           1236080 ns/op          102590 B/op         13 allocs/op
+Benchmark_GSA_UserAgentIsClean_badLorem     1000           1136072 ns/op          102597 B/op         14 allocs/op

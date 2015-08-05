@@ -335,38 +335,6 @@ func Test_UserAgentIsClean(t *testing.T) {
 
 
 
-
-
-func Benchmark_GSA_UserAgentIsClean_validUA(b *testing.B) {
-	waf := new(WAF)
-	waf.load_bad_robots(bad_robots)
-
-	ua := []byte(strings.ToLower(UA))
-	for i := 0; i < b.N; i++ {
-		waf.GoSufArray_UserAgentIsClean([]byte(ua))
-	}
-}
-
-func Benchmark_GSA_UserAgentIsClean_begInvUA(b *testing.B) {
-	waf := new(WAF)
-	waf.load_bad_robots(bad_robots)
-
-	ua := []byte(strings.ToLower(BadUAbeg))
-	for i := 0; i < b.N; i++ {
-		waf.GoSufArray_UserAgentIsClean([]byte(ua))
-	}
-}
-
-func Benchmark_GSA_UserAgentIsClean_endInvUA(b *testing.B) {
-	waf := new(WAF)
-	waf.load_bad_robots(bad_robots)
-
-	ua := []byte(strings.ToLower(BadUAend))
-	for i := 0; i < b.N; i++ {
-		waf.GoSufArray_UserAgentIsClean([]byte(ua))
-	}
-}
-
 func Benchmark_BRS_UserAgentIsClean_begInvUA(b *testing.B) {
 	waf := new(WAF)
 	waf.load_bad_robots(bad_robots)
@@ -399,27 +367,6 @@ func Benchmark_BRS_UserAgentIsClean_validUA(b *testing.B) {
 
 
 
-func Benchmark_GSA_UserAgentIsClean_OKlorem(b *testing.B) {
-	waf := new(WAF)
-	waf.load_bad_robots(bad_robots)
-
-	ua := []byte(strings.ToLower(loremipsum))
-	for i := 0; i < b.N; i++ {
-		waf.GoSufArray_UserAgentIsClean([]byte(ua))
-	}
-}
-
-func Benchmark_GSA_UserAgentIsClean_badLorem(b *testing.B) {
-	waf := new(WAF)
-	waf.load_bad_robots(bad_robots)
-
-	ua := []byte(strings.ToLower(loremipsumBAD))
-	for i := 0; i < b.N; i++ {
-		waf.GoSufArray_UserAgentIsClean([]byte(ua))
-	}
-}
-
-
 func Benchmark_BRS_UserAgentIsClean_OKLorem(b *testing.B) {
 	waf := new(WAF)
 	waf.load_bad_robots(bad_robots)
@@ -437,5 +384,62 @@ func Benchmark_BRS_UserAgentIsClean_BadLorem(b *testing.B) {
 	ua := []byte(strings.ToLower(loremipsumBAD))
 	for i := 0; i < b.N; i++ {
 		waf.BRS_UserAgentIsClean(ua)
+	}
+}
+
+
+
+
+
+
+func Benchmark_GSA_UserAgentIsClean_validUA(b *testing.B) {
+	waf := new(WAF)
+	waf.load_bad_robots(bad_robots)
+
+	ua := []byte(strings.ToLower(UA))
+	for i := 0; i < b.N; i++ {
+		waf.GoSufArray_UserAgentIsClean([]byte(ua))
+	}
+}
+
+func Benchmark_GSA_UserAgentIsClean_begInvUA(b *testing.B) {
+	waf := new(WAF)
+	waf.load_bad_robots(bad_robots)
+
+	ua := []byte(strings.ToLower(BadUAbeg))
+	for i := 0; i < b.N; i++ {
+		waf.GoSufArray_UserAgentIsClean([]byte(ua))
+	}
+}
+
+func Benchmark_GSA_UserAgentIsClean_endInvUA(b *testing.B) {
+	waf := new(WAF)
+	waf.load_bad_robots(bad_robots)
+
+	ua := []byte(strings.ToLower(BadUAend))
+	for i := 0; i < b.N; i++ {
+		waf.GoSufArray_UserAgentIsClean([]byte(ua))
+	}
+}
+
+
+
+func Benchmark_GSA_UserAgentIsClean_OKlorem(b *testing.B) {
+	waf := new(WAF)
+	waf.load_bad_robots(bad_robots)
+
+	ua := []byte(strings.ToLower(loremipsum))
+	for i := 0; i < b.N; i++ {
+		waf.GoSufArray_UserAgentIsClean([]byte(ua))
+	}
+}
+
+func Benchmark_GSA_UserAgentIsClean_badLorem(b *testing.B) {
+	waf := new(WAF)
+	waf.load_bad_robots(bad_robots)
+
+	ua := []byte(strings.ToLower(loremipsumBAD))
+	for i := 0; i < b.N; i++ {
+		waf.GoSufArray_UserAgentIsClean([]byte(ua))
 	}
 }
