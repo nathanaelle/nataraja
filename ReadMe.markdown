@@ -10,11 +10,11 @@ Nataraja is a HTTP reverse proxy.
 
 ### Main goals
 
-  * simple configuration
-  * Default secure TLS without any knowledge
-  * Minimal WAF (TODO)
-  * transparent reload conf (TODO)
-  * HTTP Caching (TODO)
+  * [x] simple configuration
+  * [x] Default secure TLS without any knowledge
+  * [ ] Minimal WAF
+  * [ ] transparent reload conf
+  * [ ] HTTP Caching
 
 ### Rejected goals
 
@@ -24,12 +24,13 @@ Nataraja is a HTTP reverse proxy.
   * Serving static files
   * ESI scripting
 
+
 ## Features
 
 ### HTTPS
 
   * automatic OCSP
-  * automatic HPKP (multiple keys transparently handled)
+  * automatic HPKP (multiple public and private keys transparently handled)
   * automatic HSTS
   * Autofinding the Chain of trust to the root certificate
   * no cargo culting required for cipher suit
@@ -70,6 +71,7 @@ From		= [ "f.q.d.n" ]
 To		= "www.f.q.d.n"
 ```
 
+
 ## License
 2-Clause BSD
 
@@ -77,11 +79,9 @@ To		= "www.f.q.d.n"
 ## Todo
 
   * write comments
-  * clean some ugly stuff
   * better handling of CSP configuration (don't be less secure than default)
   * Coping with self signed certificate
   * Coping with onion and local TLD
   * Coping with alert expiration
   * fs-notify for adding / removing configuration files
   * Support OWASP|Naxsi rules
-  *

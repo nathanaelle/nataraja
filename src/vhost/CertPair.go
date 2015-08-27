@@ -83,7 +83,10 @@ func (cp *TLSConf)PKP() []string {
 		if !k.IsEnabled() {
 			continue
 		}
-		pkp = append(pkp, k.PKP())
+		p := k.PKP()
+		if p != ""{
+			pkp = append(pkp, p)
+		}
 	}
 	return pkp
 }
