@@ -12,6 +12,7 @@ Nataraja is a HTTP reverse proxy.
 
   * [x] simple configuration
   * [x] Default secure TLS without any knowledge
+  * [x] transparent support of HTTP/1.1 & HTTP/2
   * [ ] Minimal WAF
   * [ ] transparent reload conf
   * [ ] HTTP Caching
@@ -23,6 +24,44 @@ Nataraja is a HTTP reverse proxy.
   * Non "reverse proxy" proxy
   * Serving static files
   * ESI scripting
+
+
+## Configuration
+
+For the full options list see [conf/config.toml](conf/config.toml) for the main config and [conf/example.vhost](conf/example.vhost)
+
+### Minimal config
+
+```
+Listen	= [ "127.0.0.1", "::1" ]
+Proxied	= "http://host.tld/"
+IncludeVhosts = "/path/to/vhosts"
+```
+
+### Minimal vhost without TLS
+
+```
+[[Serve]]
+zones		= [ "www.f.q.d.n" ]
+
+[[Redirect]]
+From		= [ "f.q.d.n" ]
+To		= "www.f.q.d.n"
+```
+
+### Minimal vhost with TLS
+
+```
+[[Serve]]
+zones		= [ "www.f.q.d.n" ]
+[Serve.TLS]
+keys		= [ "/path/privatekey-1", "/path/publickey-2" ]  # the second key is a public key only for HPKP
+cert		= "/path/cert"
+
+[[Redirect]]
+From		= [ "f.q.d.n" ]
+To		= "www.f.q.d.n"
+```
 
 
 ## Features
@@ -43,33 +82,6 @@ Nataraja is a HTTP reverse proxy.
   * wildcard zone redirection (aka redirect `*.some-zo.ne` to `another-zo.ne` )
   * JSON message in AccessLog
   * AccessLog and ErrorLog are syslog RFC 5424 compliant
-
-
-## Configuration
-
-For the full options list see [conf/config.toml](conf/config.toml) for the main config and [conf/example.vhost](conf/example.vhost)
-
-### Minimal config
-
-```
-Listen	= [ "127.0.0.1", "::1" ]
-Proxied	= "http://host.tld/"
-IncludeVhosts = "/path/to/vhosts"
-```
-
-### Minimal vhost with TLS
-
-```
-[[Serve]]
-zones		= [ "www.f.q.d.n" ]
-  [Serve.TLS]
-  keys		= [ "/path/privatekey" ]
-  cert		= "/path/cert"
-
-[[Redirect]]
-From		= [ "f.q.d.n" ]
-To		= "www.f.q.d.n"
-```
 
 
 ## License
