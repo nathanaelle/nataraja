@@ -32,6 +32,14 @@ func bullet_bool(f func(int,bool)error) (func(int,interface{})error)  {
 	}
 }
 
+func bullet_nil(f func(int)error) (func(int,interface{})error)  {
+	return func(fd int, _ interface{}) error {
+		return f(fd)
+	}
+}
+
+
+
 func bullet_int(f func(int,int)error) (func(int,interface{})error)  {
 	return func(fd int, i interface{}) error {
 		v, ok := i.(int)

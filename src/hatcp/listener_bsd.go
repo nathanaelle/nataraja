@@ -1,4 +1,4 @@
-// +build linux
+// +build darwin dragonfly freebsd netbsd openbsd
 
 package	hatcp
 
@@ -7,9 +7,6 @@ import	(
 	"time"
 	"os"
 )
-
-const	SO_REUSEPORT	= 15
-const	TCP_FASTOPEN	= 23
 
 
 
@@ -41,12 +38,12 @@ func so_nodelay(fd int, flag bool) error {
 	return os.NewSyscallError("so_nodelay", syscall.SetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY, boolint(flag)))
 }
 
-func so_tcpcork(fd int, flag bool) error {
-	return os.NewSyscallError("so_tcpcork", syscall.SetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_CORK, boolint(flag)))
+func so_tcpnopush(fd int, flag bool) error {
+	return os.NewSyscallError("so_tcpnopush", syscall.SetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NOPUSH, boolint(flag)))
 }
 
 func so_reuseport(fd int, flag bool) error {
-	return os.NewSyscallError("so_reuseport", syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, SO_REUSEPORT, boolint(flag)) )
+	return os.NewSyscallError("so_reuseport", syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_REUSEPORT, boolint(flag)) )
 }
 
 func so_reuseaddr(fd int, flag bool) error {
@@ -54,7 +51,8 @@ func so_reuseaddr(fd int, flag bool) error {
 }
 
 func so_fastopen(fd int, flag bool) error {
-	return os.NewSyscallError("so_fastopen", syscall.SetsockoptInt(fd, syscall.IPPROTO_TCP, TCP_FASTOPEN, boolint(flag)) )
+//	return os.NewSyscallError("so_fastopen", syscall.SetsockoptInt(fd, syscall.IPPROTO_TCP, TCP_FASTOPEN, boolint(flag)) )
+	return nil
 }
 
 func so_nonblock(fd int, flag bool) error {
