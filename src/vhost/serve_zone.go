@@ -11,6 +11,8 @@ import (
 type	ServeZone	struct {
 	Zones			[]types.FQDN
 	Proxied			types.URL
+	Cert			types.Path
+	Keys			[]types.Path
 	TLS			*TLSConf
 
 	StrictTransportSecurity	string
@@ -20,6 +22,7 @@ type	ServeZone	struct {
 	XXSSProtection		string
 	PublicKeyPins		string
 	ContentSecurityPolicy	string
+
 }
 
 

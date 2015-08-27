@@ -22,7 +22,6 @@ import (
 
 type	(
 
-
 	Config	struct {
 		Id		string
 		Listen		[]types.IpAddr
@@ -34,11 +33,11 @@ type	(
 		conflock	*sync.RWMutex
 		refreshOCSP	time.Duration
 		tls_config	*tls.Config
-		serverpairs	[]*vhost.TLSConf
 		syslog		*syslog.Syslog
 		log		*log.Logger
 
 		file_zones	map[string][]string
+		file_vhost	map[string]*vhost.Vhost
 		servable	map[string]vhost.Servable
 	}
 
@@ -46,19 +45,19 @@ type	(
 
 
 func NewConfig(file string, parser func(string,interface{}), sl *syslog.Syslog ) *Config {
-	conf		:=new( Config )
+	conf		:=new(Config)
 	conf.conflock	= new(sync.RWMutex)
 	conf.tls_config	= new(tls.Config)
 	conf.file_zones	= make(map[string][]string)
-	conf.serverpairs= make( []*vhost.TLSConf, 0, 1 )
+	conf.file_vhost = make(map[string]*vhost.Vhost)
 	conf.syslog	= sl
 	conf.log	= sl.Channel(syslog.LOG_INFO).Logger("")
 	conf.servable	= make( map[string]vhost.Servable )
-	conf.refreshOCSP= 24*time.Hour
+	conf.refreshOCSP= 6*time.Hour
 
 	conf.tls_config.CipherSuites = []uint16{
-	//	tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-	//	tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+		tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+		tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
 		tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
 
@@ -70,6 +69,7 @@ func NewConfig(file string, parser func(string,interface{}), sl *syslog.Syslog )
 	}
 
 	conf.tls_config.PreferServerCipherSuites	= true
+	conf.tls_config.CurvePreferences		= []tls.CurveID{ tls.CurveP521, tls.CurveP384, tls.CurveP256 }
 
 	conf.log.Printf("loading config file %s", file)
 	parser( file, conf )
@@ -144,17 +144,17 @@ func (c *Config) OCSPUpdater(end <-chan bool,wg  *sync.WaitGroup) {
 
 
 
-func (c *Config)refresh_cert(cert *vhost.TLSConf, wg  *sync.WaitGroup)  {
-	c.log.Printf("OCSPUpdater: [%s]\n", cert.CommonName())
+func (c *Config) refresh_cert(cert *vhost.TLSConf, wg  *sync.WaitGroup)  {
 	wg.Add(1)
 	defer wg.Done()
+
+	c.log.Printf("OCSPUpdater: [%s]\n", cert.CommonName())
 	err	:= cert.OCSP()
 	if err != nil {
 		c.log.Print("OCSPUpdater: [%s] %s\n",cert.CommonName(), err.Error())
 	}
+	c.tls_config.Certificates = append(c.tls_config.Certificates, cert.Certificate())
 }
-
-
 
 
 
@@ -162,25 +162,31 @@ func (c *Config) scan_OCSP(wg  *sync.WaitGroup) {
 	c.conflock.Lock()
 	defer c.conflock.Unlock()
 
-	for _,cert := range c.serverpairs {
-		go c.refresh_cert(cert,wg)
+	c.tls_config.Certificates = make([]tls.Certificate, 0, len(c.file_vhost))
+
+	for _,vhost := range c.file_vhost {
+		for _,cert := range vhost.ServerPairs() {
+			go c.refresh_cert(cert,wg)
+		}
 	}
+
+	c.tls_config.BuildNameToCertificate()
+
 	wg.Wait()
 }
 
 
 func (c *Config) TLS() (*tls.Config) {
-	if len(c.serverpairs)==0 {
-		c.log.Println("No TLS conf detected")
-		return nil
-	}
+	c.conflock.Lock()
+	defer c.conflock.Unlock()
 
-	c.tls_config.Certificates = make([]tls.Certificate, 0, len(c.serverpairs))
+	c.tls_config.Certificates = make([]tls.Certificate, 0, len(c.file_vhost))
 
-	for _,v := range c.serverpairs {
-		if v != nil && v.IsEnabled() {
-			cert := v.Certificate()
-			c.tls_config.Certificates = append(c.tls_config.Certificates, cert)
+	for _,vhost := range c.file_vhost {
+		for _,cert := range vhost.ServerPairs() {
+			ct := cert.Certificate()
+			c.log.Printf("%s %d %t\n", ct.Leaf.Subject.CommonName, len(ct.Certificate), ct.PrivateKey != nil )
+			c.tls_config.Certificates = append(c.tls_config.Certificates, ct)
 		}
 	}
 
@@ -191,12 +197,14 @@ func (c *Config) TLS() (*tls.Config) {
 
 
 func (conf *Config) AddVhost(file string, parser func(string,interface{}), logger *log.Logger) {
-	v		:= vhost.New(file, parser, logger )
-	servables	:= v.Servables()
-	zones		:= make([]string,0,len(servables))
-	conf.serverpairs = append(conf.serverpairs, v.ServerPairs()... )
+	conf.conflock.Lock()
+	defer conf.conflock.Unlock()
 
-	for zone,desc := range v.Servables() {
+	vhost		:= vhost.New(file, parser, logger )
+	servables	:= vhost.Servables()
+	zones		:= make([]string,0,len(servables))
+
+	for zone,desc := range servables {
 		zones	= append(zones, zone)
 		already_servable, ok := conf.servable[zone]
 		switch ok {
@@ -208,6 +216,7 @@ func (conf *Config) AddVhost(file string, parser func(string,interface{}), logge
 		}
 	}
 	conf.file_zones[file]	= zones
+	conf.file_vhost[file]	= vhost
 }
 
 
