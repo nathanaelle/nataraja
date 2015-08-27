@@ -22,7 +22,7 @@ import (
 )
 
 
-const	MIN_STAPLE_SIZE	= 10
+const	MIN_STAPLE_SIZE	= 5
 var	issuers map[string]*x509.Certificate = make(map[string]*x509.Certificate,100)
 
 type	TLSConf struct {
@@ -30,7 +30,6 @@ type	TLSConf struct {
 	Keys	[]types.Path
 	cert	*x509.Certificate
 	kp	tls.Certificate
-
 	hpkp	[]string
 }
 
@@ -39,6 +38,12 @@ type	TLSConf struct {
 
 func (cp *TLSConf)Certificate() tls.Certificate {
 	return cp.kp
+}
+
+
+
+func (cp *TLSConf)CommonName() string {
+	return cp.cert.Subject.CommonName
 }
 
 
@@ -178,7 +183,6 @@ func (cp *TLSConf)OCSP() (err error) {
 	if cp.IsEnabled() && len(cp.kp.Certificate)>1 {
 		for _,ocsp_server := range cp.cert.OCSPServer {
 			for _,issuing := range cp.cert.IssuingCertificateURL {
-				//log.Println("OCSP : ["+ocsp_server+"] ["+issuing+"]")
 				issuer, err := load_issuer(issuing)
 				if err != nil {
 					return err
@@ -194,13 +198,20 @@ func (cp *TLSConf)OCSP() (err error) {
 					return nil
 				}
 
-				_,err = ocsp.ParseResponse(staple, issuer )
+				resp,err := ocsp.ParseResponse(staple, issuer )
 				//log.Printf("\n%+v\n", struct{
 				//		ProducedAt, ThisUpdate, NextUpdate string
 				//	}{ resp.ProducedAt.Format(time.RFC3339), resp.ThisUpdate.Format(time.RFC3339), resp.NextUpdate.Format(time.RFC3339) } )
-				if err == nil {
-					cp.kp.OCSPStaple = staple
-					return nil
+				if err != nil {
+					continue
+				}
+
+				switch resp.Status {
+				case ocsp.Good, ocsp.Revoked:
+						cp.kp.OCSPStaple = staple
+						return nil
+
+					case ocsp.Unknown, ocsp.ServerFailed:
 				}
 			}
 		}

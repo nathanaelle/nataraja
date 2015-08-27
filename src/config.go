@@ -54,7 +54,7 @@ func NewConfig(file string, parser func(string,interface{}), sl *syslog.Syslog )
 	conf.syslog	= sl
 	conf.log	= sl.Channel(syslog.LOG_INFO).Logger("")
 	conf.servable	= make( map[string]vhost.Servable )
-	conf.refreshOCSP= 3*time.Hour
+	conf.refreshOCSP= 24*time.Hour
 
 	conf.tls_config.CipherSuites = []uint16{
 	//	tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
@@ -143,16 +143,27 @@ func (c *Config) OCSPUpdater(end <-chan bool,wg  *sync.WaitGroup) {
 }
 
 
+
+func (c *Config)refresh_cert(cert *vhost.TLSConf, wg  *sync.WaitGroup)  {
+	c.log.Printf("OCSPUpdater: [%s]\n", cert.CommonName())
+	wg.Add(1)
+	defer wg.Done()
+	err	:= cert.OCSP()
+	if err != nil {
+		c.log.Print("OCSPUpdater: [%s] %s\n",cert.CommonName(), err.Error())
+	}
+}
+
+
+
+
+
 func (c *Config) scan_OCSP(wg  *sync.WaitGroup) {
 	c.conflock.Lock()
 	defer c.conflock.Unlock()
 
 	for _,cert := range c.serverpairs {
-		go func(){
-			wg.Add(1)
-			defer wg.Done()
-			cert.OCSP()
-		}()
+		go c.refresh_cert(cert,wg)
 	}
 	wg.Wait()
 }
