@@ -99,6 +99,7 @@ func generic_HaTcpListener( generic_create func() (int,error), generic_bind func
 		{ bullet_int(so_listen)		, -1		},
 		{ bullet_bool(so_nodelay)	, true		},
 		{ bullet_bool(so_tcpcork)	, false		},
+		{ bullet_bool(so_tcpnopush)	, false		},
 		{ bullet_bool(so_nonblock)	, true		},
 	}, fd )
 

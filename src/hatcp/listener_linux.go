@@ -45,6 +45,10 @@ func so_tcpcork(fd int, flag bool) error {
 	return os.NewSyscallError("so_tcpcork", syscall.SetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_CORK, boolint(flag)))
 }
 
+func so_tcpnopush(fd int, flag bool) error {
+	return nil
+}
+
 func so_reuseport(fd int, flag bool) error {
 	return os.NewSyscallError("so_reuseport", syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, SO_REUSEPORT, boolint(flag)) )
 }

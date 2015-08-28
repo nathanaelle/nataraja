@@ -38,6 +38,10 @@ func so_nodelay(fd int, flag bool) error {
 	return os.NewSyscallError("so_nodelay", syscall.SetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY, boolint(flag)))
 }
 
+func so_tcpcork(fd int, flag bool) error {
+	return nil
+}
+
 func so_tcpnopush(fd int, flag bool) error {
 	return os.NewSyscallError("so_tcpnopush", syscall.SetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NOPUSH, boolint(flag)))
 }
