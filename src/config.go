@@ -169,10 +169,9 @@ func (c *Config) scan_OCSP(wg  *sync.WaitGroup) {
 			go c.refresh_cert(cert,wg)
 		}
 	}
+	wg.Wait()
 
 	c.tls_config.BuildNameToCertificate()
-
-	wg.Wait()
 }
 
 
