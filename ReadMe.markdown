@@ -63,6 +63,37 @@ To		= "www.f.q.d.n"
 ```
 
 
+### A more Complicated Case
+
+```
+[[Serve]]
+zones		= [ "www.foo.example", "foo.example" ]
+keys		= [ "/etc/ssl/foo.priv-1", "/etc/ssl/foo.pub-2" ]  # the second key is a public key only for HPKP
+cert		= "/path/foo.cert"
+
+[[Serve]]
+zones                   = [ "www.bar.example" ]
+StrictTransportSecurity = "max-age=15552000;includeSubdomains"
+XFrameOptions		= "DENY"
+keys                    = [ "/etc/ssl/bar.priv-1", "/etc/ssl/bar.pub-2" ]  # the second key is a public key only for HPKP
+cert                    = "/path/bar.cert"
+
+[[Serve]]
+zones		= [ "quux.example" ]
+
+[[Redirect]]
+From		= [ "bar.example" ]
+To		= "www.bar.example"
+
+[[Redirect]]
+From		= [ ".quux.example", "another-quux.example", ".another-quux.example" ]
+To		= "quux.example"
+
+```
+
+
+
+
 ## Features
 
 ### HTTPS
