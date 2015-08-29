@@ -54,7 +54,6 @@ To		= "www.f.q.d.n"
 ```
 [[Serve]]
 zones		= [ "www.f.q.d.n" ]
-[Serve.TLS]
 keys		= [ "/path/privatekey-1", "/path/publickey-2" ]  # the second key is a public key only for HPKP
 cert		= "/path/cert"
 

@@ -29,8 +29,9 @@ func New(file string, parser func(string,interface{}), logger *log.Logger ) *Vho
 	vhost.serverpairs	= make([]*TLSConf,0,len(vhost.Serve))
 
 	for _,v := range vhost.Serve {
-		if v.TLS != nil && v.TLS.IsEnabled() {
-			vhost.serverpairs = append( vhost.serverpairs, v.TLS )
+		pair	:= v.TLSConf()
+		if pair != nil {
+			vhost.serverpairs = append( vhost.serverpairs, pair )
 		}
 	}
 

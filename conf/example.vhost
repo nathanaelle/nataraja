@@ -7,6 +7,9 @@ Project			= "random string for logs"
 
 [[Serve]]
 Zones			= [ "dest1.zone1.tld", ".wildcadr_subzone.zone2.tld" ]
+#	optional for
+Keys	   	       = [ "/path/to/privatekey-1", "/path/to/publickey-2", "/path/to/publickey-3" ]
+Cert		       = "/path/to/X509cert"
 
 # optional
 Proxied                 = "http://front.tld/"
@@ -32,10 +35,6 @@ PublicKeyPins		= "non default Public-Key-Pins"
 #	optional
 ContentSecurityPolicy	= "non default CSP"
 
-#	optional subsection
-  [Serve.TLS]
-	Keys		= "/path/to/key"
-	Cert		= "/path/to/cert"
 
 
 

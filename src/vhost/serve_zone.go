@@ -1,8 +1,9 @@
 package	vhost
 
 import (
+	sectype	"../security.types"
 	"../types"
-//	"log"
+	"log"
 //	"net/http"
 	"strings"
 )
@@ -11,8 +12,9 @@ import (
 type	ServeZone	struct {
 	Zones			[]types.FQDN
 	Proxied			types.URL
-	Cert			types.Path
-	Keys			[]types.Path
+	Cert			*sectype.Cert
+	Keys			[]*sectype.Key
+
 	TLS			*TLSConf
 
 	StrictTransportSecurity	string
@@ -22,47 +24,20 @@ type	ServeZone	struct {
 	XXSSProtection		string
 	PublicKeyPins		string
 	ContentSecurityPolicy	string
-
 }
 
 
 
 func (sv ServeZone)Servable(Owner,Project string) []Servable {
+	if sv.TLS != nil {
+		log.Println("Serve.TLS is deprecated, please upgrade your conf")
+	}
+
 	ret	:= make([]Servable, 0, len(sv.Zones))
+	tls	:= sv.TLSConf()
 
 	for _,zone := range sv.Zones {
-		switch sv.TLS != nil && sv.TLS.IsEnabledFor(string(zone)) {
-			case true:
-				ret = append(ret, Servable {
-					Owner	: Owner,
-					Project	: Project,
-					Proxied	: sv.Proxied,
-					Zone	: string(zone),
-					TLS	: true,
-					HSTS	: sv.HSTS(),
-					XCTO	: sv.XCTO(),
-					XDO	: sv.XDO(),
-					XFO	: sv.XFO(),
-					XXSSP	: sv.XXSSP(),
-					PKP	: sv.PKP(string(zone)),
-				})
-
-
-			default:
-				ret = append(ret, Servable {
-					Owner	: Owner,
-					Project	: Project,
-					Proxied	: sv.Proxied,
-					Zone	: string(zone),
-					TLS	: false,
-					HSTS	: "",
-					XCTO	: sv.XCTO(),
-					XDO	: sv.XDO(),
-					XFO	: sv.XFO(),
-					XXSSP	: sv.XXSSP(),
-					PKP	: "",
-				})
-		}
+		ret = append(ret, sv.get_Servable(tls, Owner,Project, zone.String()))
 	}
 
 	return	ret
@@ -70,11 +45,65 @@ func (sv ServeZone)Servable(Owner,Project string) []Servable {
 }
 
 
+func (sv ServeZone)get_Servable(tls *TLSConf, Owner,Project,zone string) Servable {
+	switch tls != nil && tls.IsEnabledFor(zone) {
+		case true:
+			return Servable {
+				Owner	: Owner,
+				Project	: Project,
+				Proxied	: sv.Proxied,
+				Zone	: zone,
+				TLS	: true,
+				HSTS	: sv.HSTS(tls, zone),
+				XCTO	: sv.XCTO(),
+				XDO	: sv.XDO(),
+				XFO	: sv.XFO(),
+				XXSSP	: sv.XXSSP(),
+				PKP	: sv.PKP(tls, zone),
+			}
+
+
+		default:
+			return Servable {
+				Owner	: Owner,
+				Project	: Project,
+				Proxied	: sv.Proxied,
+				Zone	: zone,
+				TLS	: false,
+				HSTS	: "",
+				XCTO	: sv.XCTO(),
+				XDO	: sv.XDO(),
+				XFO	: sv.XFO(),
+				XXSSP	: sv.XXSSP(),
+				PKP	: "",
+			}
+	}
+
+}
+
+
+
+func (sv ServeZone) TLSConf() *TLSConf {
+	tls	:= &TLSConf {
+		Cert:	sv.Cert,
+		Keys:	sv.Keys,
+	}
+
+	if tls.IsEnabled() {
+		return tls
+	}
+
+	return nil
+}
 
 
 
 
-func (s ServeZone)HSTS() string  {
+func (s ServeZone)HSTS(tls *TLSConf, zone string) string  {
+	if !tls.IsEnabledFor(zone) {
+		return ""
+	}
+
 	if s.StrictTransportSecurity == "" {
 		s.StrictTransportSecurity = "max-age=15552000"
 	}
@@ -117,17 +146,17 @@ func (s ServeZone)CSP() string  {
 }
 
 
-func (s ServeZone)PKP(zone string) string {
-	if s.TLS.IsEnabledFor(string(zone)) {
-		ret := make([]string,0,5)
-		for _,pkp := range s.TLS.PKP() {
-			ret = append(ret,"pin-sha256=\""+pkp+"\"")
-		}
-
-		// 2 months
-		ret = append( ret, "max-age=5184000")
-		return strings.Join(ret,";")
+func (s ServeZone)PKP(tls *TLSConf, zone string) string {
+	if !tls.IsEnabledFor(zone) {
+		return ""
 	}
 
-	return ""
+	ret := make([]string,0,5)
+	for _,pkp := range tls.PKP() {
+		ret = append(ret,"pin-sha256=\""+pkp+"\"")
+	}
+
+	// 2 months
+	ret = append( ret, "max-age=5184000")
+	return strings.Join(ret,";")
 }
