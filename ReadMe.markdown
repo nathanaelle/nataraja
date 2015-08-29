@@ -10,9 +10,10 @@ Nataraja is a HTTP reverse proxy.
 
 ### Main goals
 
-  * [x] simple configuration
+  * [x] Simple configuration
   * [x] Default secure TLS without any knowledge
   * [x] transparent support of HTTP/1.1 & HTTP/2
+  * [x] IPv4 & IPv6
   * [ ] Minimal WAF
   * [ ] transparent reload conf
   * [ ] HTTP Caching
