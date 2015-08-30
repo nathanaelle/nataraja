@@ -6,7 +6,6 @@ import (
 	"net"
 	"bytes"
 	"crypto"
-	"strconv"
 	"net/url"
 	"net/http"
 	"io/ioutil"
@@ -18,7 +17,6 @@ import (
 )
 
 
-const	MIN_STAPLE_SIZE	= 5
 var	issuers map[string]*x509.Certificate = make(map[string]*x509.Certificate,100)
 
 var 	issuerMutex	sync.Mutex
@@ -113,32 +111,17 @@ func (cp *Cert)RefreshOCSP() (err error) {
 				continue
 			}
 
-			request,err := ocsp.CreateRequest(cp.cert.Leaf, issuer, &ocsp.RequestOptions { crypto.SHA1 })
+			request, err := ocsp.CreateRequest(cp.cert.Leaf, issuer, &ocsp.RequestOptions { crypto.SHA1 })
 			if err !=nil {
 				continue
 			}
 
-			staple := get_or_post_OCSP(ocsp_server,"application/ocsp-request",request)
-			if len(staple) <MIN_STAPLE_SIZE {
-				continue
-			}
-
-			resp,err := ocsp.ParseResponse(staple, issuer )
-			//log.Printf("\n%+v\n", struct{
-			//		ProducedAt, ThisUpdate, NextUpdate string
-			//	}{ resp.ProducedAt.Format(time.RFC3339), resp.ThisUpdate.Format(time.RFC3339), resp.NextUpdate.Format(time.RFC3339) } )
+			staple, status, err := get_or_post_OCSP(ocsp_server, "application/ocsp-request", request, issuer)
 			if err != nil {
 				continue
 			}
 
-			if resp.Certificate == nil {
-				err = resp.CheckSignatureFrom(cp.cert.Leaf)
-				if err != nil {
-					continue
-				}
-			}
-
-			switch resp.Status {
+			switch status {
 				case ocsp.Good, ocsp.Revoked:
 					cp.cert.OCSPStaple = staple
 					return nil
@@ -148,7 +131,7 @@ func (cp *Cert)RefreshOCSP() (err error) {
 		}
 	}
 
-	return err
+	return
 }
 
 
@@ -204,7 +187,7 @@ func needs_panic(err error) bool {
 }
 
 
-func get_or_post_OCSP(url string, mime string, data []byte) []byte {
+func get_or_post_OCSP(url string, mime string, data []byte, issuer *x509.Certificate) ([]byte,int,error) {
 	var	err	error
 	var	rsp	*http.Response
 
@@ -212,48 +195,47 @@ func get_or_post_OCSP(url string, mime string, data []byte) []byte {
 
 	if len(get_url)<255 {
 		rsp,err	= http.Get(get_url)
-
-		if err!= nil {
-			if needs_panic(err) {
-				panic(err)
-			}
-			return []byte{}
+		if err	!= nil {
+			return []byte{}, ocsp.ServerFailed, err
 		}
-		//log.Printf("\n-G----\n%s\n%+v %+v\n----\n\n", get_url, rsp.Status, rsp.Header)
-		defer rsp.Body.Close()
-	}
 
-	need_post	:= false
-	switch {
-		case len(get_url)>=255:
-			need_post	= true
-
-		case err != nil:
-			need_post	= true
-
-		default:
-			v,_ := strconv.Atoi(rsp.Header.Get("Content-Length"))
-			need_post	= v <= MIN_STAPLE_SIZE
-	}
-
-	if need_post {
-		rsp,err	= http.Post(url, mime, bytes.NewReader(data))
-		//log.Printf("\n-P----\n%+v %+v\n----\n\n", rsp.Status, rsp.Header)
-		if err!= nil {
-			if needs_panic(err) {
-				panic(err)
-			}
-			return []byte{}
+		staple, status, err := get_valid_staple(rsp.Body, issuer)
+		if err == nil {
+			return	staple, status, nil
 		}
-		defer rsp.Body.Close()
 	}
 
-	body,err:= ioutil.ReadAll(rsp.Body)
-	if err!= nil {
-		if needs_panic(err) {
-			panic(err)
-		}
-		return []byte{}
+	rsp,err	= http.Post(url, mime, bytes.NewReader(data))
+	if err	!= nil {
+		return []byte{}, ocsp.ServerFailed, err
 	}
-	return body
+
+	return	get_valid_staple(rsp.Body, issuer)
+}
+
+
+func get_valid_staple(body io.ReadCloser, issuer *x509.Certificate) ([]byte,int,error) {
+	defer body.Close()
+
+	staple,err:= ioutil.ReadAll(body)
+	if err != nil {
+		return []byte{}, ocsp.ServerFailed, err
+	}
+
+	resp,err := ocsp.ParseResponse(staple, issuer)
+	//log.Printf("\n%+v\n", struct{
+	//		ProducedAt, ThisUpdate, NextUpdate string
+	//	}{ resp.ProducedAt.Format(time.RFC3339), resp.ThisUpdate.Format(time.RFC3339), resp.NextUpdate.Format(time.RFC3339) } )
+	if err != nil {
+		return []byte{}, ocsp.ServerFailed, err
+	}
+
+	if resp.Certificate == nil {
+		err = resp.CheckSignatureFrom(issuer)
+		if err != nil {
+			return []byte{}, ocsp.ServerFailed, err
+		}
+	}
+
+	return staple, resp.Status, nil
 }
