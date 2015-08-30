@@ -11,12 +11,14 @@ import (
 	"io/ioutil"
 	"crypto/tls"
 
-	"./types"
+
 	"./vhost"
-	"./syslog"
 	"./cache"
 
 	"gopkg.in/fsnotify.v1"
+
+	syslog "github.com/nathanaelle/syslog5424"
+	types "github.com/nathanaelle/useful.types"
 )
 
 
@@ -28,10 +30,10 @@ type	(
 		Proxied		types.URL
 		IncludeVhosts	types.Path
 		Cache		*cache.Cache
+		RefreshOCSP	types.Duration
 
 
 		conflock	*sync.RWMutex
-		refreshOCSP	time.Duration
 		tls_config	*tls.Config
 		syslog		*syslog.Syslog
 		log		*log.Logger
@@ -53,7 +55,10 @@ func NewConfig(file string, parser func(string,interface{}), sl *syslog.Syslog )
 	conf.syslog	= sl
 	conf.log	= sl.Channel(syslog.LOG_INFO).Logger("")
 	conf.servable	= make( map[string]vhost.Servable )
-	conf.refreshOCSP= 6*time.Hour
+
+
+
+	conf.RefreshOCSP= types.Duration(1*time.Hour)
 
 	conf.tls_config.CipherSuites = []uint16{
 		tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
@@ -73,6 +78,13 @@ func NewConfig(file string, parser func(string,interface{}), sl *syslog.Syslog )
 
 	conf.log.Printf("loading config file %s", file)
 	parser( file, conf )
+
+	switch {
+		case conf.RefreshOCSP < types.Duration(5*time.Minute):	conf.RefreshOCSP= types.Duration(5*time.Minute)
+		case conf.RefreshOCSP > types.Duration(24*time.Hour):	conf.RefreshOCSP= types.Duration(24*time.Hour)
+	}
+
+
 
 	root_dir	:= string(conf.IncludeVhosts)
 	files,err	:= ioutil.ReadDir(root_dir)
@@ -129,7 +141,7 @@ func (c *Config) OCSPUpdater(end <-chan bool,wg  *sync.WaitGroup) {
 	wg.Add(1)
 	defer wg.Done()
 
-	ticker	:= time.Tick(c.refreshOCSP)
+	ticker	:= time.Tick(c.RefreshOCSP.Get().(time.Duration))
 	for {
 		select {
 			case <-ticker:

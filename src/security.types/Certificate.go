@@ -1,7 +1,6 @@
 package	sectypes
 
 import (
-	"../types"
 	"io"
 	"net"
 	"bytes"
@@ -14,6 +13,8 @@ import (
 	"sync"
 	"encoding/base64"
 	"golang.org/x/crypto/ocsp"
+
+	types "github.com/nathanaelle/useful.types"
 )
 
 

@@ -2,10 +2,10 @@ package	vhost
 
 import (
 	sectype	"../security.types"
-	"../types"
 	"log"
-//	"net/http"
 	"strings"
+
+	types "github.com/nathanaelle/useful.types"
 )
 
 

@@ -1,13 +1,14 @@
 package	sectypes
 
 import (
-	"../types"
 	"crypto"
 	"crypto/rsa"
 	"crypto/ecdsa"
 	"crypto/x509"
 	"crypto/sha256"
 	"encoding/base64"
+
+	types "github.com/nathanaelle/useful.types"
 )
 
 type	(

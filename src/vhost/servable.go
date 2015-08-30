@@ -1,7 +1,7 @@
 package	vhost
 
 import (
-	"../types"
+	types "github.com/nathanaelle/useful.types"
 )
 
 

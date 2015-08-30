@@ -15,13 +15,13 @@ import (
 	"crypto/tls"
 
 	"./hatcp"
-	"./types"
-	"./syslog"
 	"./cache"
 
 	"github.com/naoina/toml"
 	"github.com/bradfitz/http2"
 
+	syslog "github.com/nathanaelle/syslog5424"
+	types "github.com/nathanaelle/useful.types"
 )
 
 const	APP_NAME	string		= "nataraja"
@@ -77,8 +77,19 @@ func (nat *Nataraja)ReadFlags()  {
 	}
 
 	switch *stderr {
-		case true:	nat.syslog,_ =	syslog.New( os.Stderr, priority, APP_NAME )
-		case false:	nat.syslog,_ =	syslog.New( syslog.Local(), priority, APP_NAME )
+		case true:
+			conn	:= syslog.Dial( "stdio", "stderr", syslog.T_LFENDED, 100 )
+			if conn == nil {
+				panic("no log!")
+			}
+			nat.syslog,_ =	syslog.New( conn, *priority, APP_NAME )
+
+		case false:
+			conn	:= syslog.Dial( "local", "", syslog.T_LFENDED, 100 )
+			if conn == nil {
+				panic("no log!")
+			}
+			nat.syslog,_ =	syslog.New( conn, *priority, APP_NAME )
 	}
 
 	nat.config = NewConfig(conf_path.String(), parser, nat.syslog.SubSyslog("config") )
