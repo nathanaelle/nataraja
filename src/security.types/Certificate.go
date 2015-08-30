@@ -99,42 +99,55 @@ func (cp *Cert)LoadChain() {
 
 
 func (cp *Cert)RefreshOCSP() (err error) {
-	if cp.IsEnabled() && len(cp.cert.Certificate)>1 {
-		for _,ocsp_server := range cp.cert.Leaf.OCSPServer {
-			for _,issuing := range cp.cert.Leaf.IssuingCertificateURL {
-				issuer, err := load_issuer(issuing)
-				if err != nil {
-					return err
-				}
+	if !cp.IsEnabled() {
+		return
+	}
+	if len(cp.cert.Certificate) == 0 {
+		return
+	}
 
-				request,err := ocsp.CreateRequest(cp.cert.Leaf, issuer, &ocsp.RequestOptions { crypto.SHA1 })
-				if err !=nil {
-					return err
-				}
+	for _,ocsp_server := range cp.cert.Leaf.OCSPServer {
+		for _,issuing := range cp.cert.Leaf.IssuingCertificateURL {
+			issuer, err := load_issuer(issuing)
+			if err != nil {
+				continue
+			}
 
-				staple := get_or_post_OCSP(ocsp_server,"application/ocsp-request",request)
-				if len(staple) <MIN_STAPLE_SIZE {
-					return nil
-				}
+			request,err := ocsp.CreateRequest(cp.cert.Leaf, issuer, &ocsp.RequestOptions { crypto.SHA1 })
+			if err !=nil {
+				continue
+			}
 
-				resp,err := ocsp.ParseResponse(staple, issuer )
-				//log.Printf("\n%+v\n", struct{
-				//		ProducedAt, ThisUpdate, NextUpdate string
-				//	}{ resp.ProducedAt.Format(time.RFC3339), resp.ThisUpdate.Format(time.RFC3339), resp.NextUpdate.Format(time.RFC3339) } )
+			staple := get_or_post_OCSP(ocsp_server,"application/ocsp-request",request)
+			if len(staple) <MIN_STAPLE_SIZE {
+				continue
+			}
+
+			resp,err := ocsp.ParseResponse(staple, issuer )
+			//log.Printf("\n%+v\n", struct{
+			//		ProducedAt, ThisUpdate, NextUpdate string
+			//	}{ resp.ProducedAt.Format(time.RFC3339), resp.ThisUpdate.Format(time.RFC3339), resp.NextUpdate.Format(time.RFC3339) } )
+			if err != nil {
+				continue
+			}
+
+			if resp.Certificate == nil {
+				err = resp.CheckSignatureFrom(cp.cert.Leaf)
 				if err != nil {
 					continue
 				}
+			}
 
-				switch resp.Status {
-					case ocsp.Good, ocsp.Revoked:
-						cp.cert.OCSPStaple = staple
-						return nil
+			switch resp.Status {
+				case ocsp.Good, ocsp.Revoked:
+					cp.cert.OCSPStaple = staple
+					return nil
 
-					case ocsp.Unknown, ocsp.ServerFailed:
-				}
+				case ocsp.Unknown, ocsp.ServerFailed:
 			}
 		}
 	}
+
 	return err
 }
 
