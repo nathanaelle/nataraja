@@ -43,24 +43,24 @@ IncludeVhosts = "/path/to/vhosts"
 
 ```
 [[Serve]]
-zones		= [ "www.f.q.d.n" ]
+zones           = [ "www.f.q.d.n" ]
 
 [[Redirect]]
-From		= [ "f.q.d.n" ]
-To		= "www.f.q.d.n"
+From            = [ "f.q.d.n" ]
+To              = "www.f.q.d.n"
 ```
 
 ### Minimal vhost with TLS
 
 ```
 [[Serve]]
-zones		= [ "www.f.q.d.n" ]
-keys		= [ "/path/privatekey-1", "/path/publickey-2" ]  # the second key is a public key only for HPKP
-cert		= "/path/cert"
+zones           = [ "www.f.q.d.n" ]
+keys            = [ "/path/privatekey-1", "/path/publickey-2" ]  # the second key is a public key only for HPKP
+cert            = "/path/cert"
 
 [[Redirect]]
-From		= [ "f.q.d.n" ]
-To		= "www.f.q.d.n"
+From            = [ "f.q.d.n" ]
+To              = "www.f.q.d.n"
 ```
 
 
@@ -68,9 +68,9 @@ To		= "www.f.q.d.n"
 
 ```
 [[Serve]]
-zones		= [ "www.foo.example", "foo.example" ]
-keys		= [ "/etc/ssl/foo.priv-1", "/etc/ssl/foo.pub-2" ]  # the second key is a public key only for HPKP
-cert		= "/path/foo.cert"
+zones           = [ "www.foo.example", "foo.example" ]
+keys            = [ "/etc/ssl/foo.priv-1", "/etc/ssl/foo.pub-2" ]  # the second key is a public key only for HPKP
+cert            = "/path/foo.cert"
 
 [[Serve]]
 zones                   = [ "www.bar.example" ]
@@ -80,19 +80,17 @@ keys                    = [ "/etc/ssl/bar.priv-1", "/etc/ssl/bar.pub-2" ]  # the
 cert                    = "/path/bar.cert"
 
 [[Serve]]
-zones		= [ "quux.example" ]
+zones           = [ "quux.example" ]
 
 [[Redirect]]
-From		= [ "bar.example" ]
-To		= "www.bar.example"
+From            = [ "bar.example" ]
+To              = "www.bar.example"
 
 [[Redirect]]
-From		= [ ".quux.example", "another-quux.example", ".another-quux.example" ]
-To		= "quux.example"
+From            = [ ".quux.example", "another-quux.example", ".another-quux.example" ]
+To              = "quux.example"
 
 ```
-
-
 
 
 ## Features
@@ -123,8 +121,3 @@ To		= "quux.example"
 
   * write comments
   * better handling of CSP configuration (don't be less secure than default)
-  * Coping with self signed certificate
-  * Coping with onion and local TLD
-  * Coping with alert expiration
-  * fs-notify for adding / removing configuration files
-  * Support OWASP|Naxsi rules
