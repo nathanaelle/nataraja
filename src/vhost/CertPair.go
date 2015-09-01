@@ -17,19 +17,19 @@ type	TLSConf struct {
 }
 
 
-func (cp *TLSConf)Certificate() tls.Certificate {
+func (cp *TLSConf) Certificate() *tls.Certificate {
 	cert		:= cp.Cert.Certificate()
 	cert.PrivateKey	= cp.prv_k
-	return cert
+	return &cert
 }
 
 
-func (cp TLSConf)CommonName() string {
-	return cp.Cert.CommonName()
+func (cp TLSConf) DNSNames() []string {
+	return cp.Cert.DNSNames()
 }
 
 
-func (cp *TLSConf)IsEnabled() bool {
+func (cp *TLSConf) IsEnabled() bool {
 	if cp.invalid {
 		return false
 	}
@@ -64,11 +64,11 @@ func (cp *TLSConf)IsEnabled() bool {
 	return true
 }
 
-func (cp *TLSConf)IsEnabledFor(zone string) bool {
+func (cp *TLSConf) IsEnabledFor(zone string) bool {
 	return	cp.IsEnabled() && cp.Cert.IsEnabledFor(zone)
 }
 
-func (cp *TLSConf)OCSP() error {
+func (cp *TLSConf) OCSP() error {
 	if !cp.IsEnabled() {
 		return nil
 	}
@@ -76,7 +76,7 @@ func (cp *TLSConf)OCSP() error {
 	return cp.Cert.RefreshOCSP()
 }
 
-func (cp *TLSConf)PKP() []string {
+func (cp *TLSConf) PKP() []string {
 	pkp	:= make([]string,0,len(cp.Keys))
 
 	for _,k := range cp.Keys {

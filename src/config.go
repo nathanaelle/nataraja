@@ -5,6 +5,7 @@ import (
 	"path"
 	"sync"
 	"time"
+	"errors"
 	"strings"
 	"net/url"
 	"net/http"
@@ -38,6 +39,8 @@ type	(
 		syslog		*syslog.Syslog
 		log		*log.Logger
 
+		tlspairs	map[string]*vhost.TLSConf
+
 		file_zones	map[string][]string
 		file_vhost	map[string]*vhost.Vhost
 		servable	map[string]vhost.Servable
@@ -47,34 +50,59 @@ type	(
 
 
 func NewConfig(file string, parser func(string,interface{}), sl *syslog.Syslog ) *Config {
-	conf		:=new(Config)
-	conf.conflock	= new(sync.RWMutex)
-	conf.tls_config	= new(tls.Config)
-	conf.file_zones	= make(map[string][]string)
-	conf.file_vhost = make(map[string]*vhost.Vhost)
-	conf.syslog	= sl
-	conf.log	= sl.Channel(syslog.LOG_INFO).Logger("")
-	conf.servable	= make( map[string]vhost.Servable )
+	conf := &Config{
+		//RefreshOCSP:				types.Duration(12*time.Hour),
+		RefreshOCSP:				types.Duration(5*time.Minute),
 
+		conflock:				new(sync.RWMutex),
+		tlspairs:				make(map[string]*vhost.TLSConf),
+		file_zones:				make(map[string][]string),
+		file_vhost:				make(map[string]*vhost.Vhost),
+		syslog:					sl,
+		log:					sl.Channel(syslog.LOG_INFO).Logger(""),
+		servable:				make( map[string]vhost.Servable ),
+		tls_config:				&tls.Config{
+			PreferServerCipherSuites:		true,
+			CurvePreferences:			[]tls.CurveID{
+									tls.CurveP521,
+									tls.CurveP384,
+									tls.CurveP256,
+								},
+			CipherSuites:				[]uint16{
+									tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+									tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+									tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+									tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
 
-
-	conf.RefreshOCSP= types.Duration(1*time.Hour)
-
-	conf.tls_config.CipherSuites = []uint16{
-		tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-		tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-		tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-
-		tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
-		tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-
-		tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
-		tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+									tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
+									tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+									tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
+									tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+								},
+							},
 	}
 
-	conf.tls_config.PreferServerCipherSuites	= true
-	conf.tls_config.CurvePreferences		= []tls.CurveID{ tls.CurveP521, tls.CurveP384, tls.CurveP256 }
+	conf.tls_config.GetCertificate	= func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+		conf.conflock.RLock()
+		defer conf.conflock.RUnlock()
+
+		sni := strings.TrimRight(strings.ToLower(clientHello.ServerName),".")
+		if cert, ok := conf.tlspairs[sni] ; ok {
+			return cert.Certificate(), nil
+		}
+
+		labels := strings.Split(sni, ".")
+		for i := range labels {
+			labels[i] = "*"
+			sni := strings.Join(labels, ".")
+			if cert, ok := conf.tlspairs[sni]; ok {
+				return cert.Certificate(), nil
+			}
+		}
+
+		return nil, errors.New("No Certificate for :"+sni)
+	}
+
 
 	conf.log.Printf("loading config file %s", file)
 	parser( file, conf )
@@ -83,8 +111,6 @@ func NewConfig(file string, parser func(string,interface{}), sl *syslog.Syslog )
 		case conf.RefreshOCSP < types.Duration(5*time.Minute):	conf.RefreshOCSP= types.Duration(5*time.Minute)
 		case conf.RefreshOCSP > types.Duration(24*time.Hour):	conf.RefreshOCSP= types.Duration(24*time.Hour)
 	}
-
-
 
 	root_dir	:= string(conf.IncludeVhosts)
 	files,err	:= ioutil.ReadDir(root_dir)
@@ -156,34 +182,34 @@ func (c *Config) OCSPUpdater(end <-chan bool,wg  *sync.WaitGroup) {
 
 
 
-func (c *Config) refresh_cert(cert *vhost.TLSConf, wg  *sync.WaitGroup)  {
+func (c *Config) refresh_cert(cert *vhost.TLSConf, wg *sync.WaitGroup, lock *sync.Mutex) {
 	wg.Add(1)
 	defer wg.Done()
 
-	c.log.Printf("OCSPUpdater: [%s]\n", cert.CommonName())
-	err	:= cert.OCSP()
-	if err != nil {
-		c.log.Print("OCSPUpdater: [%s] %s\n",cert.CommonName(), err.Error())
+	cert.OCSP()
+
+	lock.Lock()
+	defer lock.Unlock()
+	for _,sni := range cert.DNSNames() {
+		c.tlspairs[sni] = cert
 	}
-	c.tls_config.Certificates = append(c.tls_config.Certificates, cert.Certificate())
 }
 
 
 
-func (c *Config) scan_OCSP(wg  *sync.WaitGroup) {
+func (c *Config) scan_OCSP(wg *sync.WaitGroup) {
 	c.conflock.Lock()
 	defer c.conflock.Unlock()
 
-	c.tls_config.Certificates = make([]tls.Certificate, 0, len(c.file_vhost))
+	c.tlspairs	= make(map[string]*vhost.TLSConf, len(c.tlspairs))
+	lock		:= new(sync.Mutex)
 
 	for _,vhost := range c.file_vhost {
 		for _,cert := range vhost.ServerPairs() {
-			go c.refresh_cert(cert,wg)
+			go c.refresh_cert(cert, wg, lock)
 		}
 	}
 	wg.Wait()
-
-	c.tls_config.BuildNameToCertificate()
 }
 
 
@@ -191,17 +217,15 @@ func (c *Config) TLS() (*tls.Config) {
 	c.conflock.Lock()
 	defer c.conflock.Unlock()
 
-	c.tls_config.Certificates = make([]tls.Certificate, 0, len(c.file_vhost))
+	c.tlspairs = make(map[string]*vhost.TLSConf)
 
 	for _,vhost := range c.file_vhost {
 		for _,cert := range vhost.ServerPairs() {
-			ct := cert.Certificate()
-			c.log.Printf("%s %d %t\n", ct.Leaf.Subject.CommonName, len(ct.Certificate), ct.PrivateKey != nil )
-			c.tls_config.Certificates = append(c.tls_config.Certificates, ct)
+			for _,sni := range cert.DNSNames() {
+				c.tlspairs[sni] = cert
+			}
 		}
 	}
-
-	c.tls_config.BuildNameToCertificate()
 
 	return c.tls_config
 }
@@ -213,7 +237,7 @@ func (conf *Config) AddVhost(file string, parser func(string,interface{}), logge
 
 	vhost		:= vhost.New(file, parser, logger )
 	servables	:= vhost.Servables()
-	zones		:= make([]string,0,len(servables))
+	zones		:= make([]string, 0, len(servables))
 
 	for zone,desc := range servables {
 		zones	= append(zones, zone)

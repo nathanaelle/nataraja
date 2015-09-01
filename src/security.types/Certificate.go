@@ -39,8 +39,18 @@ func (cp *Cert) Certificate() tls.Certificate {
 }
 
 
-func (cp *Cert) CommonName() string {
-	return	cp.cert.Leaf.Subject.CommonName
+func (cp *Cert) DNSNames() []string {
+	ret	:= []string{}
+
+	if len(cp.cert.Leaf.Subject.CommonName) > 0 {
+		ret	= append( ret, cp.cert.Leaf.Subject.CommonName )
+	}
+
+	for _, dnsname := range cp.cert.Leaf.DNSNames {
+		ret	= append( ret, dnsname )
+	}
+
+	return ret
 }
 
 
@@ -121,6 +131,8 @@ func (cp *Cert)RefreshOCSP() (err error) {
 			if err != nil {
 				continue
 			}
+
+			//log.Printf("Status %s\t%s\n",cp.cert.Leaf.Subject.CommonName, ([]string{ "OK", "REVOKED", "UNKNOWN", "FAILED "})[status])
 
 			switch status {
 				case ocsp.Good, ocsp.Revoked:
