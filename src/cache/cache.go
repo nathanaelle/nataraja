@@ -45,20 +45,7 @@ func (cache *Cache)Init(pool Pool) {
 
 
 func (cache *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	datalog	:= &Datalog {
-		Owner		: "-",
-		Project		: "-",
-		Vhost		: "-",
-		Host		: req.Host,
-		TLS		: false,
-		Proto		: req.Proto,
-		Method		: req.Method,
-		Request		: req.URL.String(),
-		RemoteAddr	: req.RemoteAddr,
-		Referer		: req.Referer(),
-		UserAgent	: req.UserAgent(),
-		ContentType	: "-",
-	}
+	datalog	:= NewLog(req)
 
 	defer LogHTTP(cache.AccessLog, time.Now(), datalog )
 

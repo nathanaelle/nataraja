@@ -17,6 +17,7 @@ import (
 	"./hatcp"
 	"./cache"
 
+	// "gopkg.in/fsnotify.v1"
 	"github.com/naoina/toml"
 	"github.com/bradfitz/http2"
 
@@ -108,12 +109,31 @@ func (nat *Nataraja) GenerateServer() {
 	nat.cache.Init(&cache.PassThru {})
 
 	nat.server = &http.Server {
-		Handler			: nat,
-		ReadTimeout		: 10 * time.Minute,
-		WriteTimeout		: 10 * time.Minute,
-//		ConnState		: sessionLogger(),
-		ErrorLog		: nat.slog.SubSyslog("connexion").Channel(syslog.LOG_INFO).Logger("INFO: "),
-		TLSConfig		: nat.config.TLS(),
+		Handler:			nat,
+		ReadTimeout:			10 * time.Minute,
+		WriteTimeout:			10 * time.Minute,
+//		ConnState:			sessionLogger(),
+		ErrorLog:			nat.slog.SubSyslog("connexion").Channel(syslog.LOG_INFO).Logger("INFO: "),
+		TLSConfig:			&tls.Config{
+			GetCertificate:			nat.config.GetCertificate,
+			PreferServerCipherSuites:	true,
+			CurvePreferences:		[]tls.CurveID{
+								tls.CurveP521,
+								tls.CurveP384,
+								tls.CurveP256,
+							},
+			CipherSuites:			[]uint16{
+								tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+								tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+								tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+								tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+
+								tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
+								tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+								tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
+								tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+							},
+						},
 	}
 
 	http2.ConfigureServer( nat.server, &http2.Server {} )
@@ -204,57 +224,40 @@ func (nat *Nataraja) forgeHTTPS(ip types.IpAddr) (net.Listener) {
 
 
 func (nat *Nataraja)ServeHTTP(rw http.ResponseWriter, req *http.Request){
-	log	:= &cache.Datalog {
-		Owner		: "-",
-		Project		: "-",
-		Vhost		: "-",
-		Host		: req.Host,
-		TLS		: false,
-		Proto		: req.Proto,
-		Method		: req.Method,
-		Request		: req.URL.String(),
-		RemoteAddr	: req.RemoteAddr,
-		Referer		: req.Referer(),
-		UserAgent	: req.UserAgent(),
-		ContentType	: "-",
-	}
-	defer cache.LogHTTP(nat.cache.AccessLog, time.Now(), log )
-
-	if req.TLS != nil {
-		log.TLS = true
-	}
+	acclog	:= cache.NewLog(req)
+	defer cache.LogHTTP(nat.cache.AccessLog, time.Now(), acclog )
 
 	if req.ProtoMajor < 1 {
-		cache.BadRequest("Obsolete Pre 1.0 Protocol").PrematureExit(rw,log)
+		cache.BadRequest("Obsolete Pre 1.0 Protocol").PrematureExit(rw,acclog)
 		return
 	}
 
 	if req.ProtoMajor == 1 && req.ProtoMinor < 1 {
-		cache.BadRequest("Obsolete 1.0 Protocol").PrematureExit(rw,log)
+		cache.BadRequest("Obsolete 1.0 Protocol").PrematureExit(rw,acclog)
 		return
 	}
 
 	if req.Host == "" {
-		cache.BadRequest("No [Host:]").PrematureExit(rw,log)
+		cache.BadRequest("No [Host:]").PrematureExit(rw,acclog)
 		return
 	}
 
 	if req.TLS != nil {
 		if req.TLS.ServerName == "" {
-			cache.BadRequest("no tls servername").PrematureExit(rw,log)
+			cache.BadRequest("no tls servername").PrematureExit(rw,acclog)
 			return
 		}
 	}
 
 	d	:= new(types.FQDN)
 	if d.Set(req.Host) != nil {
-		cache.BadRequest("invalid [Host:]").PrematureExit(rw,log)
+		cache.BadRequest("invalid [Host:]").PrematureExit(rw,acclog)
 		return
 	}
 
 	servable,ok	:= nat.config.SearchServable( d.PathToRoot() )
 	if !ok {
-		cache.BadRequest("unknown [Host:]").PrematureExit(rw,log)
+		cache.BadRequest("unknown [Host:]").PrematureExit(rw,acclog)
 		return
 	}
 
@@ -262,7 +265,7 @@ func (nat *Nataraja)ServeHTTP(rw http.ResponseWriter, req *http.Request){
 	// emilinate the situation at first connection
 	// can't cope with it if resumed
 	if req.TLS != nil && !req.TLS.DidResume && req.TLS.ServerName != req.Host {
-//		cache.BadRequest("tls server name mismatch [Host:]" + req.TLS.ServerName + " : " + req.Host).PrematureExit(rw,log)
+//		cache.BadRequest("tls server name mismatch [Host:]" + req.TLS.ServerName + " : " + req.Host).PrematureExit(rw,acclog)
 //		return
 	}
 
@@ -278,7 +281,7 @@ func (nat *Nataraja)ServeHTTP(rw http.ResponseWriter, req *http.Request){
 				}
 		}
 		t.Host	= servable.Redirect
-		cache.MovedPermanently(t.String()).PrematureExit(rw,log)
+		cache.MovedPermanently(t.String()).PrematureExit(rw,acclog)
 		return
 	}
 
@@ -286,10 +289,10 @@ func (nat *Nataraja)ServeHTTP(rw http.ResponseWriter, req *http.Request){
 		t := *(req.URL)
 		t.Scheme= "https"
 		t.Host	= req.Host
-		cache.MovedPermanently(t.String()).PrematureExit(rw,log)
+		cache.MovedPermanently(t.String()).PrematureExit(rw,acclog)
 		return
 	}
 
-	log.Status = -1
+	acclog.Status = -1
 	nat.cache.ServeHTTP(rw,req)
 }

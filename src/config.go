@@ -35,7 +35,6 @@ type	(
 
 
 		conflock	*sync.RWMutex
-		tls_config	*tls.Config
 		syslog		*syslog.Syslog
 		log		*log.Logger
 
@@ -61,48 +60,7 @@ func NewConfig(file string, parser func(string,interface{}), sl *syslog.Syslog )
 		syslog:					sl,
 		log:					sl.Channel(syslog.LOG_INFO).Logger(""),
 		servable:				make( map[string]vhost.Servable ),
-		tls_config:				&tls.Config{
-			PreferServerCipherSuites:		true,
-			CurvePreferences:			[]tls.CurveID{
-									tls.CurveP521,
-									tls.CurveP384,
-									tls.CurveP256,
-								},
-			CipherSuites:				[]uint16{
-									tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-									tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-									tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-									tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-
-									tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
-									tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-									tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
-									tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-								},
-							},
 	}
-
-	conf.tls_config.GetCertificate	= func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-		conf.conflock.RLock()
-		defer conf.conflock.RUnlock()
-
-		sni := strings.TrimRight(strings.ToLower(clientHello.ServerName),".")
-		if cert, ok := conf.tlspairs[sni] ; ok {
-			return cert.Certificate(), nil
-		}
-
-		labels := strings.Split(sni, ".")
-		for i := range labels {
-			labels[i] = "*"
-			sni := strings.Join(labels, ".")
-			if cert, ok := conf.tlspairs[sni]; ok {
-				return cert.Certificate(), nil
-			}
-		}
-
-		return nil, errors.New("No Certificate for :"+sni)
-	}
-
 
 	conf.log.Printf("loading config file %s", file)
 	parser( file, conf )
@@ -125,7 +83,31 @@ func NewConfig(file string, parser func(string,interface{}), sl *syslog.Syslog )
 		}
 	}
 
+	conf.scan_OCSP( new(sync.WaitGroup), new(sync.Mutex) )
+
 	return	conf
+}
+
+
+func (conf *Config) GetCertificate(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+	conf.conflock.RLock()
+	defer conf.conflock.RUnlock()
+
+	sni := strings.TrimRight(strings.ToLower(clientHello.ServerName),".")
+	if cert, ok := conf.tlspairs[sni] ; ok {
+		return cert.Certificate(), nil
+	}
+
+	labels := strings.Split(sni, ".")
+	for i := range labels {
+		labels[i] = "*"
+		sni := strings.Join(labels, ".")
+		if cert, ok := conf.tlspairs[sni]; ok {
+			return cert.Certificate(), nil
+		}
+	}
+
+	return nil, errors.New("No Certificate for :"+sni)
 }
 
 
@@ -171,7 +153,7 @@ func (c *Config) OCSPUpdater(end <-chan bool,wg  *sync.WaitGroup) {
 	for {
 		select {
 			case <-ticker:
-				c.scan_OCSP(new(sync.WaitGroup))
+				c.scan_OCSP(new(sync.WaitGroup),new(sync.Mutex))
 
 			case <-end:
 				c.log.Println("OCSPUpdater: end")
@@ -179,7 +161,6 @@ func (c *Config) OCSPUpdater(end <-chan bool,wg  *sync.WaitGroup) {
 		}
 	}
 }
-
 
 
 func (c *Config) refresh_cert(cert *vhost.TLSConf, wg *sync.WaitGroup, lock *sync.Mutex) {
@@ -196,38 +177,18 @@ func (c *Config) refresh_cert(cert *vhost.TLSConf, wg *sync.WaitGroup, lock *syn
 }
 
 
-
-func (c *Config) scan_OCSP(wg *sync.WaitGroup) {
+func (c *Config) scan_OCSP(wg *sync.WaitGroup, lock *sync.Mutex) {
 	c.conflock.Lock()
 	defer c.conflock.Unlock()
 
-	c.tlspairs	= make(map[string]*vhost.TLSConf, len(c.tlspairs))
-	lock		:= new(sync.Mutex)
-
+	c.tlspairs = make(map[string]*vhost.TLSConf, len(c.tlspairs))
 	for _,vhost := range c.file_vhost {
 		for _,cert := range vhost.ServerPairs() {
 			go c.refresh_cert(cert, wg, lock)
 		}
 	}
+
 	wg.Wait()
-}
-
-
-func (c *Config) TLS() (*tls.Config) {
-	c.conflock.Lock()
-	defer c.conflock.Unlock()
-
-	c.tlspairs = make(map[string]*vhost.TLSConf)
-
-	for _,vhost := range c.file_vhost {
-		for _,cert := range vhost.ServerPairs() {
-			for _,sni := range cert.DNSNames() {
-				c.tlspairs[sni] = cert
-			}
-		}
-	}
-
-	return c.tls_config
 }
 
 
@@ -271,10 +232,6 @@ func (c *Config) SearchServable(matches []string) (servable vhost.Servable, ok b
 
 func (c *Config) Configure() func(*http.Request,*cache.Datalog) (http.Header,url.URL) {
 	return func(req *http.Request, datalog *cache.Datalog) (http.Header,url.URL) {
-		if req.TLS != nil {
-			datalog.TLS = true
-		}
-
 		d := new(types.FQDN)
 		d.Set(req.Host)
 		servable,_	:= c.SearchServable( d.PathToRoot() )

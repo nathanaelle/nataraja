@@ -1,6 +1,8 @@
 package	cache
 
 import	(
+	"net"
+	"time"
 	"net/http"
 )
 
@@ -27,7 +29,17 @@ type	(
 
 
 func (pt *PassThru) Init() error {
-	pt.transport = http.DefaultTransport
+	pt.transport = &http.Transport{
+	        Proxy: nil,
+	        Dial: (&net.Dialer{
+			DualStack:	true,
+	                Timeout:	5*time.Minute,
+	                KeepAlive:	10*time.Minute,
+	        }).Dial,
+	        TLSHandshakeTimeout:	2*time.Second,
+		DisableCompression:	true,
+		MaxIdleConnsPerHost:	100,
+	}
 	return nil
 }
 
