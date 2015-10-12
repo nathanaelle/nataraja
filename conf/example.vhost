@@ -7,7 +7,8 @@ Project			= "random string for logs"
 
 [[Serve]]
 Zones			= [ "dest1.zone1.tld", ".wildcadr_subzone.zone2.tld" ]
-#	optional for
+
+#	optional
 Keys	   	       = [ "/path/to/privatekey-1", "/path/to/publickey-2", "/path/to/publickey-3" ]
 Cert		       = "/path/to/X509cert"
 
@@ -18,12 +19,15 @@ Proxied                 = "http://front.tld/"
 StrictTransportSecurity	= "non default HSTS configuration options"
 
 #	optional
+#	Overwrite from backend allowed
 XFrameOptions		= "non default X-Frame-Options"
 
 #	optional
+#	Overwrite from backend allowed
 XContentTypeOptions	= "non default X-Content-Type-Options"
 
 #	optional
+#	Overwrite from backend allowed
 XDownloadOptions	= "non default X-Download-Options"
 
 #	optional

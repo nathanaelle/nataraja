@@ -31,6 +31,7 @@ Nataraja is a HTTP reverse proxy.
 
 For the full options list see [conf/config.toml](conf/config.toml) for the main config and [conf/example.vhost](conf/example.vhost)
 
+
 ### Minimal config
 
 ```
@@ -52,10 +53,12 @@ To              = "www.f.q.d.n"
 
 ### Minimal vhost with TLS
 
+
 ```
 [[Serve]]
 zones           = [ "www.f.q.d.n" ]
-keys            = [ "/path/privatekey-1", "/path/publickey-2" ]  # the second key is a public key only for HPKP
+# Only one key is acceptable because HSTS pinning/preload is disabled by default
+keys            = [ "/path/privatekey-1" ]
 cert            = "/path/cert"
 
 [[Redirect]]
@@ -91,6 +94,21 @@ From            = [ ".quux.example", "another-quux.example", ".another-quux.exam
 To              = "quux.example"
 
 ```
+
+### Explanation for the TLS configuration
+
+the TLS configuration for a virtual host, needs 2 mandatory informations :
+
+  * the path to the certificate provided by the CA
+  * the path to the private key
+  * optionaly, you can add severals public keys to the primary key
+
+all the other configurations fall in two cases :
+
+  * good practices like cipher suite, accepted protocols, HSTS, …
+  * informations already stored in the certificate like OCSP responder, intermediate certificate, …
+
+so, it seems logical to provide only the non guessable part : the certificates and the private and public keys
 
 
 ## Features
