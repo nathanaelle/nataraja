@@ -14,20 +14,21 @@ import (
 	"io/ioutil"
 	"crypto/tls"
 
-	"./hatcp"
 	"./cache"
 
 	// "gopkg.in/fsnotify.v1"
 	"github.com/naoina/toml"
 	"github.com/bradfitz/http2"
 
-	syslog "github.com/nathanaelle/syslog5424"
-	types "github.com/nathanaelle/useful.types"
+	syslog	"github.com/nathanaelle/syslog5424"
+	types	"github.com/nathanaelle/useful.types"
+	hatcp	"github.com/nathanaelle/pasnet"
 )
 
 const	APP_NAME	string		= "nataraja"
 const	DEFAULT_CONF	types.Path	= "/etc/nataraja/config.toml"
 const	DEFAULT_PRIO	syslog.Priority	= (syslog.LOG_DAEMON|syslog.LOG_WARNING)
+const	DEFAULT_DEVLOG	types.Path	= ""
 
 func parser(file string, data interface{}) {
 	f,_	:= os.Open(file)
@@ -58,16 +59,19 @@ func SummonNataraja() (nat *Nataraja) {
 
 func (nat *Nataraja)ReadFlags()  {
 	conf_path	:= new(types.Path)
+	devlog_path	:= new(types.Path)
 	priority	:= new(syslog.Priority)
 
 	*priority	 = DEFAULT_PRIO
 	*conf_path	 = DEFAULT_CONF
+	*devlog_path	 = DEFAULT_DEVLOG
 
 	var	numcpu	= flag.Int("cpu", 1, "maximum number of logical CPU that can be executed simultaneously")
 	var	stderr	= flag.Bool("stderr", false, "send message to stderr instead of syslog")
 
-	flag.Var(conf_path, "conf", "path to the conf" )
-	flag.Var(priority , "priority", "log priority in syslog format facility.severity" )
+	flag.Var(conf_path	, "conf", "path to the conf" )
+	flag.Var(devlog_path	, "devlog", "path to RFC5424 syslog unix datagram socket" )
+	flag.Var(priority	, "priority", "log priority in syslog format facility.severity" )
 
 	flag.Parse()
 
@@ -86,7 +90,7 @@ func (nat *Nataraja)ReadFlags()  {
 			nat.syslog,_ =	syslog.New( conn, *priority, APP_NAME )
 
 		case false:
-			conn	:= syslog.Dial( "local", "", syslog.T_LFENDED, 100 )
+			conn	:= syslog.Dial( "local", devlog_path.String(), syslog.T_LFENDED, 100 )
 			if conn == nil {
 				panic("no log!")
 			}
@@ -102,7 +106,6 @@ func (nat *Nataraja) GenerateServer() {
 	nat.cache	= &cache.Cache {
 		AccessLog	: nat.slog.Channel(syslog.LOG_NOTICE).Logger(""),
 		Configure	: nat.config.Configure(),
-		WAF		: nat.config.WAF(),
 		ErrorLog	: nat.slog.SubSyslog("proxy").Channel(syslog.LOG_WARNING).Logger("WARNING: "),
 	}
 
@@ -292,6 +295,10 @@ func (nat *Nataraja)ServeHTTP(rw http.ResponseWriter, req *http.Request){
 		cache.MovedPermanently(t.String()).PrematureExit(rw,acclog)
 		return
 	}
+
+
+	// WAF HERE
+
 
 	acclog.Status = -1
 	nat.cache.ServeHTTP(rw,req)

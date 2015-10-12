@@ -82,7 +82,6 @@ func (cp *Cert) IsEnabled() bool {
 	}
 
 	cp.LoadChain()
-	cp.RefreshOCSP()
 
 	return true
 }

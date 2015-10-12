@@ -13,6 +13,7 @@ update:
 	go get -u golang.org/x/crypto/ocsp
 	go get -u github.com/nathanaelle/syslog5424
 	go get -u github.com/nathanaelle/useful.types
+	go get -u github.com/nathanaelle/pasnet
 
 build:
 	go build -o nataraja.${GOOS} src/*.go

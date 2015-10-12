@@ -18,8 +18,8 @@ import (
 
 	"gopkg.in/fsnotify.v1"
 
-	syslog "github.com/nathanaelle/syslog5424"
-	types "github.com/nathanaelle/useful.types"
+	syslog	"github.com/nathanaelle/syslog5424"
+	types	"github.com/nathanaelle/useful.types"
 )
 
 
@@ -32,7 +32,6 @@ type	(
 		IncludeVhosts	types.Path
 		Cache		*cache.Cache
 		RefreshOCSP	types.Duration
-
 
 		conflock	*sync.RWMutex
 		syslog		*syslog.Syslog
@@ -51,7 +50,7 @@ type	(
 func NewConfig(file string, parser func(string,interface{}), sl *syslog.Syslog ) *Config {
 	conf := &Config{
 		//RefreshOCSP:				types.Duration(12*time.Hour),
-		RefreshOCSP:				types.Duration(5*time.Minute),
+		RefreshOCSP:				types.Duration(1*time.Hour),
 
 		conflock:				new(sync.RWMutex),
 		tlspairs:				make(map[string]*vhost.TLSConf),
@@ -260,13 +259,5 @@ func (c *Config) Configure() func(*http.Request,*cache.Datalog) (http.Header,url
 			return header, default_proxy
 		}
 		return header, candidat_proxy
-	}
-}
-
-
-func (c *Config) WAF() func(*http.Request) *cache.Status {
-	return func(req *http.Request) *cache.Status {
-
-		return nil
 	}
 }
