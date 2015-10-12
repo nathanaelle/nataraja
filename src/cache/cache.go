@@ -18,8 +18,6 @@ import	(
 type	Cache	struct {
 	// ErrorLog specifies an optional logger for errors
 	// that occur when attempting to proxy the request.
-	// If nil, logging goes to os.Stderr via the log package's
-	// standard logger.
 	ErrorLog	*log.Logger
 
 	// AccessLog specifies an optional logger for errors
@@ -28,20 +26,15 @@ type	Cache	struct {
 	AccessLog	*log.Logger
 
 	Configure	func(*http.Request,*Datalog)	(http.Header,url.URL)
-	WAF		func(*http.Request)		*Status
 
 	pool		Pool
 }
 
 
-
-
-func (cache *Cache)Init(pool Pool) {
+func (cache *Cache) Init(pool Pool) {
 	cache.pool	= pool
 	cache.pool.Init()
 }
-
-
 
 
 func (cache *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
@@ -50,12 +43,6 @@ func (cache *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	defer LogHTTP(cache.AccessLog, time.Now(), datalog )
 
 	injectHeaders, ProxyTarget := cache.Configure( req, datalog )
-
-	ret_status := cache.WAF( req )
-	if ret_status != nil {
-		ret_status.PrematureExit(rw, datalog )
-		return
-	}
 
 	outreq	:= configure_outgoing_request(req, ProxyTarget)
 	entry,err := cache.pool.Get( outreq )
@@ -116,7 +103,6 @@ func serveContent(rw http.ResponseWriter,datalog *Datalog, source_header http.He
 			datalog.Status		= http.StatusPartialContent
 			size			:=ranges[0][1]-ranges[0][0]
 			datalog.BodySize	= size
-			rw.Header().Set("Content-Length", strconv.FormatInt(data.BodyLen,10))
 			rw.Header().Set("Content-Length", strconv.FormatInt(size,10))
 			rw.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d",ranges[0][0], ranges[0][1],data.BodyLen))
 
@@ -170,7 +156,7 @@ func compute_ranges(s_r string,data_len int64) (ok bool,ranges [][2]int64) {
 		}
 
 		switch {
-		case start_end[0] == "":
+			case start_end[0] == "":
 				if start_end[1]=="" {
 					return false,[][2]int64 {}
 				}
@@ -226,10 +212,6 @@ func compute_ranges(s_r string,data_len int64) (ok bool,ranges [][2]int64) {
 
 	return	true,ranges
 }
-
-
-
-
 
 
 func Header_out2in(src http.Header) http.Header {
