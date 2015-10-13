@@ -18,7 +18,7 @@ import (
 	"./cache"
 
 	"gopkg.in/fsnotify.v1"
-	"github.com/bradfitz/http2"
+	"golang.org/x/net/http2"
 
 	syslog	"github.com/nathanaelle/syslog5424"
 	types	"github.com/nathanaelle/useful.types"
@@ -35,6 +35,7 @@ type Nataraja struct {
 	Id		string
 	Listen		[]types.IpAddr
 	Proxied		types.URL
+	DevLog		types.Path
 	IncludeVhosts	types.Path
 	RefreshOCSP	types.Duration
 
@@ -73,18 +74,15 @@ func SummonNataraja() (*Nataraja) {
 
 func (nat *Nataraja) ReadConfiguration()  {
 	conf_path	:= new(types.Path)
-	devlog_path	:= new(types.Path)
 	priority	:= new(syslog.Priority)
 
 	*priority	 = DEFAULT_PRIO
 	*conf_path	 = DEFAULT_CONF
-	*devlog_path	 = DEFAULT_DEVLOG
 
 	var	numcpu	= flag.Int("cpu", 1, "maximum number of logical CPU that can be executed simultaneously")
 	var	stderr	= flag.Bool("stderr", false, "send message to stderr instead of syslog")
 
 	flag.Var(conf_path	, "conf", "path to the conf" )
-	flag.Var(devlog_path	, "devlog", "path to RFC5424 syslog unix datagram socket" )
 	flag.Var(priority	, "priority", "log priority in syslog format facility.severity" )
 
 	flag.Parse()
@@ -105,7 +103,7 @@ func (nat *Nataraja) ReadConfiguration()  {
 	var conn	syslog.Conn
 	switch *stderr {
 		case true:	conn	= syslog.Dial( "stdio", "stderr", syslog.T_LFENDED, 100 )
-		case false:	conn	= syslog.Dial( "local", devlog_path.String(), syslog.T_LFENDED, 100 )
+		case false:	conn	= syslog.Dial( "local", nat.DevLog.String(), syslog.T_LFENDED, 100 )
 	}
 
 	if conn == nil {
