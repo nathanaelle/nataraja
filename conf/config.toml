@@ -16,4 +16,20 @@ Proxied		= "http://host.tld/"
 #
 #	Path to the directory containing the vhosts
 #
+#	The path must already exists before running nataraja
 IncludeVhosts	= "/path/to/vhosts"
+
+
+#
+#	Path to an alternative /dev/log like socket
+#
+#	The socket must already exists before running nataraja
+DevLog		= "/dev/log"
+
+
+#
+#	Time to wait before the next OCSP verification
+#
+#	not less than 5m
+#	not more than 1d
+RefreshOCSP	= "1h"
