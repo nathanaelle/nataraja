@@ -1,63 +1,77 @@
 package	main
 
 import (
-	"os"
 	"log"
-	"net"
 	"flag"
+	"path"
 	"sync"
 	"time"
+	"errors"
 	"runtime"
-	"syscall"
-	"os/signal"
+	"strings"
+	"net/url"
 	"net/http"
 	"io/ioutil"
 	"crypto/tls"
 
+	"./vhost"
 	"./cache"
 
-	// "gopkg.in/fsnotify.v1"
-	"github.com/naoina/toml"
+	"gopkg.in/fsnotify.v1"
 	"github.com/bradfitz/http2"
 
 	syslog	"github.com/nathanaelle/syslog5424"
 	types	"github.com/nathanaelle/useful.types"
-	hatcp	"github.com/nathanaelle/pasnet"
 )
+
 
 const	APP_NAME	string		= "nataraja"
 const	DEFAULT_CONF	types.Path	= "/etc/nataraja/config.toml"
 const	DEFAULT_PRIO	syslog.Priority	= (syslog.LOG_DAEMON|syslog.LOG_WARNING)
 const	DEFAULT_DEVLOG	types.Path	= ""
 
-func parser(file string, data interface{}) {
-	f,_	:= os.Open(file)
-	defer f.Close()
-
-	buf,_	:= ioutil.ReadAll(f)
-	err	:= toml.Unmarshal(buf, data)
-	exterminate(err)
-}
-
 
 type Nataraja struct {
-	syslog		*syslog.Syslog
-	slog		*syslog.Syslog
-	config		*Config
-	server		*http.Server
-	end		chan bool
+	Id		string
+	Listen		[]types.IpAddr
+	Proxied		types.URL
+	IncludeVhosts	types.Path
+	RefreshOCSP	types.Duration
+
 	wg		*sync.WaitGroup
+	conflock	*sync.RWMutex
+	end		<-chan bool
+
+	syslog		*syslog.Syslog
+	log		*log.Logger
+
+	server		*http.Server
 	cache		*cache.Cache
 
+	tlspairs	map[string]*vhost.TLSConf
+	file_zones	map[string][]string
+	file_vhost	map[string]*vhost.Vhost
+	servable	map[string]vhost.Servable
 }
 
-func SummonNataraja() (nat *Nataraja) {
-	nat		= new(Nataraja)
-	nat.wg		= new(sync.WaitGroup)
-	return
+
+func SummonNataraja() (*Nataraja) {
+	nat := &Nataraja {
+		RefreshOCSP:		types.Duration(1*time.Hour),
+
+		wg:			new(sync.WaitGroup),
+		conflock:		new(sync.RWMutex),
+
+		tlspairs:		make(map[string]*vhost.TLSConf),
+		file_zones:		make(map[string][]string),
+		file_vhost:		make(map[string]*vhost.Vhost),
+		servable:		make(map[string]vhost.Servable ),
+	}
+
+	return nat
 }
 
-func (nat *Nataraja)ReadFlags()  {
+func (nat *Nataraja) ReadConfiguration()  {
 	conf_path	:= new(types.Path)
 	devlog_path	:= new(types.Path)
 	priority	:= new(syslog.Priority)
@@ -75,38 +89,85 @@ func (nat *Nataraja)ReadFlags()  {
 
 	flag.Parse()
 
+	parse_toml_file( conf_path.String(), nat )
+
 	switch {
 		case *numcpu >runtime.NumCPU():	runtime.GOMAXPROCS(runtime.NumCPU())
 		case *numcpu <1:		runtime.GOMAXPROCS(1)
 		default:			runtime.GOMAXPROCS(*numcpu)
 	}
 
-	switch *stderr {
-		case true:
-			conn	:= syslog.Dial( "stdio", "stderr", syslog.T_LFENDED, 100 )
-			if conn == nil {
-				panic("no log!")
-			}
-			nat.syslog,_ =	syslog.New( conn, *priority, APP_NAME )
-
-		case false:
-			conn	:= syslog.Dial( "local", devlog_path.String(), syslog.T_LFENDED, 100 )
-			if conn == nil {
-				panic("no log!")
-			}
-			nat.syslog,_ =	syslog.New( conn, *priority, APP_NAME )
+	switch {
+		case nat.RefreshOCSP < types.Duration(5*time.Minute):	nat.RefreshOCSP= types.Duration(5*time.Minute)
+		case nat.RefreshOCSP > types.Duration(24*time.Hour):	nat.RefreshOCSP= types.Duration(24*time.Hour)
 	}
 
-	nat.config = NewConfig(conf_path.String(), parser, nat.syslog.SubSyslog("config") )
+	var conn	syslog.Conn
+	switch *stderr {
+		case true:	conn	= syslog.Dial( "stdio", "stderr", syslog.T_LFENDED, 100 )
+		case false:	conn	= syslog.Dial( "local", devlog_path.String(), syslog.T_LFENDED, 100 )
+	}
+
+	if conn == nil {
+		panic("no log!")
+	}
+	nat.syslog,_ =	syslog.New( conn, *priority, APP_NAME )
+	nat.log = nat.syslog.Channel(syslog.LOG_INFO).Logger("")
+
+
+	if nat.Id != "" {
+		nat.syslog	= nat.syslog.SubSyslog(nat.Id)
+	}
+}
+
+func (nat *Nataraja) LoadVirtualHosts() {
+	root_dir	:= string(nat.IncludeVhosts)
+	files,err	:= ioutil.ReadDir(root_dir)
+	exterminate(err)
+
+	for _,file := range files {
+		if !file.Mode().IsRegular() {
+			continue
+		}
+		filename := file.Name()
+		if strings.HasSuffix(filename, ".vhost") {
+			nat.AddVhost(path.Join(root_dir,filename), parse_toml_file, nat.syslog.SubSyslog("vhost").Channel(syslog.LOG_INFO).Msgid(filename).Logger("") )
+		}
+	}
+
+	nat.scan_OCSP( new(sync.WaitGroup), new(sync.Mutex) )
+}
+
+
+func (nat *Nataraja) AddVhost(file string, parser func(string,interface{}), logger *log.Logger) {
+	nat.conflock.Lock()
+	defer nat.conflock.Unlock()
+
+	vhost		:= vhost.New(file, parser, logger )
+	servables	:= vhost.Servables()
+	zones		:= make([]string, 0, len(servables))
+
+	for zone,desc := range servables {
+		zones	= append(zones, zone)
+		already_servable, ok := nat.servable[zone]
+		switch ok {
+			case false:
+				nat.servable[zone] = desc
+
+			case true:
+				log.Panic("Already Servable : "+ zone + " for "+ already_servable.Owner)
+		}
+	}
+	nat.file_zones[file]	= zones
+	nat.file_vhost[file]	= vhost
 }
 
 
 func (nat *Nataraja) GenerateServer() {
-	nat.slog	= nat.syslog.SubSyslog(nat.config.Id)
 	nat.cache	= &cache.Cache {
-		AccessLog	: nat.slog.Channel(syslog.LOG_NOTICE).Logger(""),
-		Configure	: nat.config.Configure(),
-		ErrorLog	: nat.slog.SubSyslog("proxy").Channel(syslog.LOG_WARNING).Logger("WARNING: "),
+		AccessLog	: nat.syslog.Channel(syslog.LOG_NOTICE).Logger(""),
+		Configure	: nat.Configure_pre_route_request(),
+		ErrorLog	: nat.syslog.SubSyslog("proxy").Channel(syslog.LOG_WARNING).Logger("WARNING: "),
 	}
 
 	nat.cache.Init(&cache.PassThru {})
@@ -116,9 +177,9 @@ func (nat *Nataraja) GenerateServer() {
 		ReadTimeout:			10 * time.Minute,
 		WriteTimeout:			10 * time.Minute,
 //		ConnState:			sessionLogger(),
-		ErrorLog:			nat.slog.SubSyslog("connexion").Channel(syslog.LOG_INFO).Logger("INFO: "),
+		ErrorLog:			nat.syslog.SubSyslog("connexion").Channel(syslog.LOG_INFO).Logger("INFO: "),
 		TLSConfig:			&tls.Config{
-			GetCertificate:			nat.config.GetCertificate,
+			GetCertificate:			nat.GetCertificate,
 			PreferServerCipherSuites:	true,
 			CurvePreferences:		[]tls.CurveID{
 								tls.CurveP521,
@@ -144,35 +205,18 @@ func (nat *Nataraja) GenerateServer() {
 
 
 func (nat *Nataraja) SignalHandler() {
-	nat.end		 = make(chan bool)
-	signalChannel	:= make(chan os.Signal)
+	nat.end, _	= SignalCatcher()
 
-	//signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
-	signal.Notify(signalChannel, syscall.SIGTERM, syscall.SIGHUP)
-
-	go func() {
-		switch <-signalChannel {
-			case os.Interrupt:
-				close(nat.end)
-
-			case syscall.SIGTERM:
-				close(nat.end)
-
-			case syscall.SIGHUP:
-		}
-	}()
-
-	go nat.config.ConfUpdater(nat.end,nat.wg)
-	go nat.config.OCSPUpdater(nat.end,nat.wg)
+	go nat.ConfUpdater(nat.end,nat.wg)
+	go nat.OCSPUpdater(nat.end,nat.wg)
 }
 
 
 func (nat *Nataraja) Run() {
-
-	crit	:= nat.slog.Channel(syslog.LOG_CRIT)
-	for _,ip:= range nat.config.Listen {
-		go serveSock(nat.end, nat.wg, crit.Msgid("http" ).Logger("Fatal: "), nat.server, nat.forgeHTTP_(ip))
-		go serveSock(nat.end, nat.wg, crit.Msgid("https").Logger("Fatal: "), nat.server, nat.forgeHTTPS(ip))
+	crit	:= nat.syslog.Channel(syslog.LOG_CRIT)
+	for _,ip:= range nat.Listen {
+		go serveSock(nat.end, nat.wg, crit.Msgid("http" ).Logger("Fatal: "), nat.server, forgeHTTP_(ip))
+		go serveSock(nat.end, nat.wg, crit.Msgid("https").Logger("Fatal: "), nat.server, forgeHTTPS(ip, nat.server.TLSConfig))
 	}
 
 	nat.wg.Wait()
@@ -180,53 +224,152 @@ func (nat *Nataraja) Run() {
 }
 
 
+func (nat *Nataraja) ConfUpdater(end <-chan bool,wg  *sync.WaitGroup) {
+	wg.Add(1)
+	defer wg.Done()
 
+	watcher, err := fsnotify.NewWatcher()
+	exterminate(err)
 
+	defer watcher.Close()
 
+	err = watcher.Add( nat.IncludeVhosts.String() )
+	exterminate(err)
 
-func serveSock(end <-chan bool, nat_wg *sync.WaitGroup, slog *log.Logger, server *http.Server, sock net.Listener) {
-	nat_wg.Add(1)
-	defer nat_wg.Done()
+	for {
+		select {
+			case event := <-watcher.Events:
+				if event.Op&fsnotify.Write == fsnotify.Write {
+					// here broadcast reload conf
+				}
 
-	go func(){
-		for {
-			err := server.Serve(sock)
-			if err == nil {
-				log.Println("serveSock: WOOT")
-				break
-			}
-			slog.Println(err)
+			case err := <-watcher.Errors:
+				log.Println("error:", err)
+
+			case <-end:
+				return
 		}
-	}()
-
-	<-end
-	log.Println("serveSock: end")
+	}
 }
 
 
-func (nat *Nataraja) forgeHTTP_(ip types.IpAddr) (net.Listener) {
-	addr,err:= ip.ToTCPAddr( "http" )
-	exterminate(err)
-	sock,err:= hatcp.Listen( "tcp", addr )
-	exterminate(err)
+func (nat *Nataraja) OCSPUpdater(end <-chan bool,wg  *sync.WaitGroup) {
+	wg.Add(1)
+	defer wg.Done()
 
-	return sock
+	ticker	:= time.Tick(nat.RefreshOCSP.Get().(time.Duration))
+	for {
+		select {
+		case <-ticker:
+			nat.scan_OCSP(new(sync.WaitGroup),new(sync.Mutex))
+
+		case <-end:
+			return
+		}
+	}
 }
 
 
-func (nat *Nataraja) forgeHTTPS(ip types.IpAddr) (net.Listener) {
-	addr,err:= ip.ToTCPAddr( "https" )
-	exterminate(err)
-	tcp,err	:= hatcp.Listen( "tcp", addr )
-	exterminate(err)
-	sock	:= tls.NewListener( tcp, nat.server.TLSConfig )
+func (nat *Nataraja) refresh_cert(cert *vhost.TLSConf, wg *sync.WaitGroup, lock *sync.Mutex) {
+	wg.Add(1)
+	defer wg.Done()
 
-	return sock
+	cert.OCSP()
+
+	lock.Lock()
+	defer lock.Unlock()
+	for _,sni := range cert.DNSNames() {
+		nat.tlspairs[sni] = cert
+	}
 }
 
 
+func (nat *Nataraja) scan_OCSP(wg *sync.WaitGroup, lock *sync.Mutex) {
+	nat.conflock.Lock()
+	defer nat.conflock.Unlock()
 
-func (nat *Nataraja)ServeHTTP(rw http.ResponseWriter, req *http.Request){
+	nat.tlspairs = make(map[string]*vhost.TLSConf, len(nat.tlspairs))
+	for _,vhost := range nat.file_vhost {
+		for _,cert := range vhost.ServerPairs() {
+			go nat.refresh_cert(cert, wg, lock)
+		}
+	}
+
+	wg.Wait()
+}
+
+
+func (nat *Nataraja) SearchServable(matches []string) (servable vhost.Servable, ok bool) {
+	nat.conflock.RLock()
+	defer nat.conflock.RUnlock()
+
+	for _,possible_match := range matches {
+		servable, ok = nat.servable[possible_match]
+		if ok {
+			return
+		}
+	}
+	return vhost.Servable {}, false
+}
+
+
+func (nat *Nataraja) Configure_pre_route_request() func(*http.Request,*cache.Datalog) (http.Header,url.URL) {
+	return func(req *http.Request, datalog *cache.Datalog) (http.Header,url.URL) {
+		d := new(types.FQDN)
+		d.Set(req.Host)
+		servable,_	:= nat.SearchServable( d.PathToRoot() )
+
+		datalog.Owner	= servable.Owner
+		datalog.Project	= servable.Project
+		datalog.Vhost	= servable.Zone
+
+		header := make(http.Header)
+		header.Set("X-Frame-Options"		, servable.XFO	)
+		header.Set("X-Content-Type-Options"	, servable.XCTO	)
+		header.Set("X-Download-Options"		, servable.XDO	)
+		header.Set("X-XSS-Protection"		, servable.XXSSP)
+		//header.Set("Content-Security-Policy",servable.CSP)
+
+		if req.TLS != nil {
+			header.Set("Strict-Transport-Security",servable.HSTS)
+			if servable.PKP != "" {
+				header.Set("Public-Key-Pins",servable.PKP)
+			}
+		}
+
+		default_proxy	:= url.URL(nat.Proxied)
+		candidat_proxy	:= url.URL(servable.Proxied)
+		if candidat_proxy.Host == "" {
+			return header, default_proxy
+		}
+		return header, candidat_proxy
+	}
+}
+
+
+func (nat *Nataraja) GetCertificate(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+	nat.conflock.RLock()
+	defer nat.conflock.RUnlock()
+
+	sni := strings.TrimRight(strings.ToLower(clientHello.ServerName),".")
+	if cert, ok := nat.tlspairs[sni] ; ok {
+		return cert.Certificate(), nil
+	}
+
+	labels := strings.Split(sni, ".")
+	for i := range labels {
+		labels[i] = "*"
+		sni := strings.Join(labels, ".")
+		if cert, ok := nat.tlspairs[sni]; ok {
+			return cert.Certificate(), nil
+		}
+	}
+
+	return nil, errors.New("No Certificate for :"+sni)
+}
+
+
+func (nat *Nataraja) ServeHTTP(rw http.ResponseWriter, req *http.Request){
 	acclog	:= cache.NewLog(req)
 	defer cache.LogHTTP(nat.cache.AccessLog, time.Now(), acclog )
 
@@ -258,7 +401,7 @@ func (nat *Nataraja)ServeHTTP(rw http.ResponseWriter, req *http.Request){
 		return
 	}
 
-	servable,ok	:= nat.config.SearchServable( d.PathToRoot() )
+	servable,ok	:= nat.SearchServable( d.PathToRoot() )
 	if !ok {
 		cache.BadRequest("unknown [Host:]").PrematureExit(rw,acclog)
 		return
