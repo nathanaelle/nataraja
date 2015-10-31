@@ -84,6 +84,8 @@ func serveContent(rw http.ResponseWriter,datalog *Datalog, source_header http.He
 		}
 	}
 
+	body	:= data.Body()
+
 	ranges := [][2]int64 {}
 	if s_r, ok := source_header["Range"]; ok {
 		ok,ranges = compute_ranges(s_r[0],data.BodyLen)
@@ -93,7 +95,7 @@ func serveContent(rw http.ResponseWriter,datalog *Datalog, source_header http.He
 		}
 
 		if len(ranges) == 1 {
-			if _, err := data.Body.Seek( ranges[0][0], os.SEEK_SET); err != nil {
+			if _, err := body.Seek( ranges[0][0], os.SEEK_SET); err != nil {
 				RangeNotSatisfiable("*/"+strconv.FormatInt(int64(data.BodyLen),10)).PrematureExit(rw, datalog )
 				return
 			}
@@ -111,7 +113,7 @@ func serveContent(rw http.ResponseWriter,datalog *Datalog, source_header http.He
 				return
 			}
 
-			io.CopyN(rw, data.Body, size)
+			io.CopyN(rw, body, size)
 			return
 		}
 
@@ -134,7 +136,7 @@ func serveContent(rw http.ResponseWriter,datalog *Datalog, source_header http.He
 		return
 	}
 
-	io.CopyN(rw, data.Body,data.BodyLen)
+	io.CopyN(rw, body,data.BodyLen)
 	return
 }
 
@@ -219,19 +221,19 @@ func Header_out2in(src http.Header) http.Header {
 
 	for k, vv := range src {
 		switch	k {
-			//
-			case "Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization", "Te", "Trailers", "Transfer-Encoding", "Upgrade":
+		//
+		case "Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization", "Te", "Trailers", "Transfer-Encoding", "Upgrade":
 
-			// Nataraja's job
-			case "Range":
+		// Nataraja's job
+		case "Range", "Cache-Control","Accept-Encoding":
 
-			// really old and cargo culted header
-			case "Pragma":
+		// really old and cargo culted header
+		case "Pragma":
 
-			default:
-				for _, v := range vv {
-					dst.Add(k, v)
-				}
+		default:
+			for _, v := range vv {
+				dst.Add(k, v)
+			}
 		}
 	}
 	return dst
@@ -247,30 +249,30 @@ func Header_in2out(dst http.Header, headers ...http.Header) {
 	for _,h := range headers {
 		for k, vv := range h {
 			switch	k {
-				// Some Security by Obscurity
-				case	"Server", "X-Powered-By":
+			// Some Security by Obscurity
+			case	"Server", "X-Powered-By":
 
-				// really old and cargo culted header
-				case "Pragma":
+			// really old and cargo culted header
+			case "Pragma":
 
-				// Nataraja's job - enforce the last only
-				case	"Accept-Ranges", "Public-Key-Pins", "StrictTransportSecurity","X-XSS-Protection":
+			// Nataraja's job - enforce the last only
+			case	"Accept-Ranges", "Public-Key-Pins", "StrictTransportSecurity","X-XSS-Protection":
+				for _, v := range vv {
+					dst.Set(k, v)
+				}
+
+			// enforce only if not already set
+			case	"X-Frame-Options","X-Content-Type-Options","X-Download-Options","Content-Security-Policy":
+				if _,ok := dst[k]; !ok {
 					for _, v := range vv {
 						dst.Set(k, v)
 					}
+				}
 
-				// enforce only if not already set
-				case	"X-Frame-Options","X-Content-Type-Options","X-Download-Options","Content-Security-Policy":
-					if _,ok := dst[k]; !ok {
-						for _, v := range vv {
-							dst.Set(k, v)
-						}
-					}
-
-				default:
-					for _, v := range vv {
-						dst.Add(k, v)
-					}
+			default:
+				for _, v := range vv {
+					dst.Add(k, v)
+				}
 			}
 		}
 	}

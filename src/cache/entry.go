@@ -2,13 +2,14 @@ package cache
 
 
 import	(
-	"net/http"
-	"strings"
-	"strconv"
+	"io"
+	"fmt"
 	"time"
 	"bytes"
-	"io"
 	"errors"
+	"strings"
+	"strconv"
+	"net/http"
 )
 
 
@@ -20,6 +21,10 @@ type	(
 		io.Seeker
 	}
 
+	CacheCont	struct {
+		Expire		int64
+		Entity		*Entry
+	}
 
 
 	Entry	struct {
@@ -30,7 +35,8 @@ type	(
 		CacheControl	CacheControl
 		Header		http.Header
 		BodyLen		int64
-		Body		ReadSeekCloser
+		body		ReadSeekCloser
+		BodyBytes	[]byte
 	}
 
 
@@ -46,7 +52,7 @@ type	(
 )
 
 
-func (*Buffer)Close() error  {
+func (*Buffer) Close() error  {
 	return nil
 }
 
@@ -87,13 +93,14 @@ func NewEntry(header http.Header,status int,ContentLength int64, body io.ReadClo
 		Status:		status,
 	}
 
-	delete(header, "Content-Length")
-	entry.Header	= header
+	header.Del("Pragma")
+	header.Del("Content-Length")
+	header.Del("Cache-Control")
 
 	// Drop Expires and inject if needed as Cache-Control
 	if expires, ok := header["Expires"] ; ok {
 		delete(header, "Expires")
-		exp	:= int(httpDate2Time( expires[0], now ).Sub(now)/time.Second)
+		exp	:= int64(httpDate2Time( expires[0], now ).Sub(now)/time.Second)
 		switch {
 			// invalid expires has no effect so nothing need to be done
 			case exp == 0:
@@ -111,10 +118,26 @@ func NewEntry(header http.Header,status int,ContentLength int64, body io.ReadClo
 		}
 	}
 
+	if header.Get("Set-Cookie") != "" {
+		entry.CacheControl.Private = true
+		entry.CacheControl.Public = false
+		entry.CacheControl.NoCache = true
+	}
+
+	if header.Get("Vary") != "" {
+		entry.CacheControl.Private = true
+		entry.CacheControl.Public = false
+		entry.CacheControl.NoCache = true
+	}
+
+
+	header.Set("Cache-Control", entry.CacheControl.String() )
+	entry.Header	= header
+
 
 	switch status {
 		// user can custom these codes
-		case 200,201,202,204,205, 203,226:
+		case 200,201,202,203,226:
 
 		// user can custom these codes
 		case 401,403,404:
@@ -122,7 +145,7 @@ func NewEntry(header http.Header,status int,ContentLength int64, body io.ReadClo
 		default:
 			body.Close()
 			entry.BodyLen = 0
-			entry.Body = nil
+			entry.BodyBytes = []byte{}
 
 			return entry
 	}
@@ -133,43 +156,65 @@ func NewEntry(header http.Header,status int,ContentLength int64, body io.ReadClo
 		case 0:
 			body.Close()
 			entry.BodyLen	= 0
-			entry.Body	= nil
+			entry.BodyBytes = []byte{}
 			return entry
 
 		case -1:
 			buff	:= new(bytes.Buffer)
 			blen,err:= io.Copy(buff, body)
-			entry.Body	= &Buffer{ bytes.NewReader( buff.Bytes() ) }
+			entry.BodyBytes = buff.Bytes()
 			entry.BodyLen	= blen
 			body.Close()
 			if err != nil {
-				entry.Body.Close()
 				entry.BodyLen	= 0
-				entry.Body	= nil
+				entry.BodyBytes = []byte{}
 				entry.Status	= http.StatusServiceUnavailable
 				return entry
 			}
 			return entry
+	}
+	entry.BodyLen	= ContentLength
+	if !entry.Cachable() {
+		switch rsc,ok	:= body.(ReadSeekCloser); ok {
+			case true:	entry.body = rsc
+			case false:	entry.body = &MimicReadSeekCloser{ body }
+		}
 
+		return entry
 	}
 
-	entry.BodyLen	= ContentLength
-	switch rsc,ok	:= body.(ReadSeekCloser); ok {
-		case true:	entry.Body = rsc
-		case false:	entry.Body = &MimicReadSeekCloser{ body }
+	buff	:= bytes.NewBuffer(make([]byte, 0, ContentLength))
+	blen,err:= io.CopyN(buff, body, ContentLength)
+	entry.BodyBytes = buff.Bytes()
+	body.Close()
+	if err != nil || blen != ContentLength {
+		entry.BodyLen	= 0
+		entry.BodyBytes = []byte{}
+		entry.Status	= http.StatusServiceUnavailable
 	}
 
 	return entry
 }
 
 
-
-func (e Entry)Close() {
-	if e.Body != nil {
-		e.Body.Close()
+func (e Entry) Body() ReadSeekCloser {
+	if e.body != nil {
+		return e.body
 	}
+
+	return &Buffer{ bytes.NewReader( e.BodyBytes ) }
 }
 
+func (e Entry) Close() error {
+	if e.body != nil {
+		return e.body.Close()
+	}
+	return nil
+}
+
+func (e Entry) Cachable() bool {
+	return e.CacheControl.Cachable()
+}
 
 
 
@@ -178,20 +223,64 @@ func (e Entry)Close() {
 
 
 type	CacheControl	struct {
-	MustRevalidate	bool
-	NoCache		bool
-	NoStore		bool
-	NoTransform	bool
-	Public		bool
-	Private		bool
-	ProxyRevalidate	bool
-	MaxAge		int
-	SMaxAge		int
-	Unknown		[]string
-	Raw		string
+	MustRevalidate	bool		`msgpack:",omitempty"`
+	NoCache		bool		`msgpack:",omitempty"`
+	NoStore		bool		`msgpack:",omitempty"`
+	NoTransform	bool		`msgpack:",omitempty"`
+	Public		bool		`msgpack:",omitempty"`
+	Private		bool		`msgpack:",omitempty"`
+	ProxyRevalidate	bool		`msgpack:",omitempty"`
+	MaxAge		int64		`msgpack:",omitempty"`
+	SMaxAge		int64		`msgpack:",omitempty"`
+	Unknown		[]string	`msgpack:",omitempty"`
+}
+
+func (cc CacheControl) Cachable() bool {
+	return cc.Public && !cc.Private && !cc.NoCache && !cc.NoStore && !cc.MustRevalidate && cc.MaxAge > 0
 }
 
 
+func (cc CacheControl) String() string {
+	list	:= make([]string,0,9+len(cc.Unknown))
+
+	if cc.Private {
+		list = append(list, "private")
+	}
+
+	if cc.Public {
+		list = append(list, "public")
+	}
+
+	if cc.NoCache {
+		list = append(list, "no-cache")
+	}
+
+	if cc.NoStore {
+		list = append(list, "no-store")
+	}
+
+	if cc.MustRevalidate {
+		list = append(list, "must-revalidate")
+	}
+
+	if cc.ProxyRevalidate {
+		list = append(list, "proxy-revalidate")
+	}
+
+	if cc.MaxAge >= 0 {
+		list = append(list, fmt.Sprintf("max-age=%d",cc.MaxAge))
+	}
+
+	if cc.SMaxAge > 0 {
+		list = append(list, fmt.Sprintf("s-maxage=%d",cc.SMaxAge))
+	}
+
+	if len(cc.Unknown) >0 {
+		list = append(list, cc.Unknown...)
+	}
+
+	return strings.Join(list,",")
+}
 
 
 func NewCacheControl(rawcc string) CacheControl {
@@ -200,13 +289,12 @@ func NewCacheControl(rawcc string) CacheControl {
 		NoCache:		false,
 		NoStore:		false,
 		NoTransform:		false,
-		Public:			true,
-		Private:		false,
+		Public:			false,
+		Private:		true,
 		ProxyRevalidate:	false,
 		MaxAge:			0,
 		SMaxAge:		0,
 		Unknown:		[]string{},
-		Raw:			rawcc,
 	}
 
 	s_cc := strings.Split(rawcc, ",")
@@ -231,14 +319,14 @@ func NewCacheControl(rawcc string) CacheControl {
 					if err == nil {
 						continue
 					}
-					cc.MaxAge = ma
+					cc.MaxAge = int64(ma)
 				}
 				if len(token)>9 && token[0:8] == "s-maxage" {
 					sma,err := strconv.Atoi(token[9:])
 					if err == nil {
 						continue
 					}
-					cc.SMaxAge = sma
+					cc.SMaxAge = int64(sma)
 				}
 				cc.Unknown = append( cc.Unknown, token )
 		}
