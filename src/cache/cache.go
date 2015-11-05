@@ -221,11 +221,11 @@ func Header_out2in(src http.Header) http.Header {
 
 	for k, vv := range src {
 		switch	k {
-		//
+		// Connection information that needn't any propagation
 		case "Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization", "Te", "Trailers", "Transfer-Encoding", "Upgrade":
 
 		// Nataraja's job
-		case "Range", "Cache-Control","Accept-Encoding":
+		case "Range", "Cache-Control", "Accept-Encoding", "If-Modified-Since", "If-None-Match":
 
 		// really old and cargo culted header
 		case "Pragma":

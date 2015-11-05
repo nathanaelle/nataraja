@@ -54,30 +54,38 @@ func (volatile_cache *NaiveMemory) round_trip(req *http.Request) (*Entry,error){
 
 
 
-func (volatile_cache *NaiveMemory) cache_round_trip(key string, req *http.Request) (*Entry,error){
+func (volatile_cache *NaiveMemory) cache_round_trip(key string, req *http.Request, o_ent *Entry) (*Entry,error){
+	if o_ent != nil {
+		if o_ent.LastModified.Unix() > 0 {
+			req.Header.Add("If-Modified-Since", o_ent.LastModified.Format(time.RFC1123Z) )
+		}
+		if o_ent.Etag != "" {
+			req.Header.Add("If-None-Match", o_ent.Etag )
+		}
+	}
+
 	res, err := volatile_cache.transport.RoundTrip(req)
 	if err != nil {
 		return nil, err
 	}
 
-	ent := NewEntry(res.Header, res.StatusCode, res.ContentLength, res.Body )
+	ent	:= NewEntry(res.Header, res.StatusCode, res.ContentLength, res.Body )
+	now	:= time.Now().Unix()
 
 	if !ent.Cachable() {
-		volatile_cache.write( key, CacheCont { time.Now().Unix()+exp_not_cachable, nil } )
+		volatile_cache.write( key, CacheCont { now+exp_not_cachable, now+exp_not_cachable, nil } )
 		return ent, nil
 	}
 
 	switch res.StatusCode {
 	case	200,204,205,404,410,400:
-		return volatile_cache.write( key, CacheCont { time.Now().Unix()+ent.CacheControl.MaxAge, ent } )
+		return volatile_cache.write( key, CacheCont { now+ent.CacheControl.MaxAge, now+2*ent.CacheControl.MaxAge, ent } )
 
 	case	304:
-		cc,_	:= volatile_cache.read(key)
-		ent	= cc.Entity
-		return volatile_cache.write( key, CacheCont { time.Now().Unix()+ent.CacheControl.MaxAge, ent } )
+		return volatile_cache.write( key, CacheCont { now+o_ent.CacheControl.MaxAge, now+2*o_ent.CacheControl.MaxAge, o_ent } )
 
 	default:
-		volatile_cache.write( key, CacheCont { time.Now().Unix()+exp_not_cachable, nil } )
+		volatile_cache.write( key, CacheCont { now+exp_not_cachable, now+exp_not_cachable, nil } )
 		return ent, nil
 	}
 }
@@ -100,7 +108,7 @@ func (volatile_cache *NaiveMemory) write(key string, cc CacheCont) (*Entry,error
 	n_m	:= make(map[string]CacheCont,len(o_m))
 
 	for k, v := range o_m {
-		if (now - v.Expire) < dlc {
+		if (now - v.Purge) < dlc {
 			n_m[k] = v
 		}
 	}
@@ -133,5 +141,5 @@ func (volatile_cache *NaiveMemory) Get(req *http.Request) (*Entry,error) {
 		}
 	}
 
-	return volatile_cache.cache_round_trip( cleaned_url, req )
+	return volatile_cache.cache_round_trip( cleaned_url, req, ent.Entity )
 }

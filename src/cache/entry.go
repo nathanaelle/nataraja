@@ -23,6 +23,7 @@ type	(
 
 	CacheCont	struct {
 		Expire		int64
+		Purge		int64
 		Entity		*Entry
 	}
 
@@ -87,7 +88,7 @@ func NewEntry(header http.Header,status int,ContentLength int64, body io.ReadClo
 
 	entry	:= &Entry{
 		ContentType:	header.Get("Content-Type"),
-		Etag:		header.Get("Etag"),
+		Etag:		header.Get("ETag"),
 		LastModified:	httpDate2Time( header.Get("Last-Modified"), now ),
 		CacheControl:	NewCacheControl(header.Get("Cache-Control")),
 		Status:		status,
@@ -102,19 +103,19 @@ func NewEntry(header http.Header,status int,ContentLength int64, body io.ReadClo
 		delete(header, "Expires")
 		exp	:= int64(httpDate2Time( expires[0], now ).Sub(now)/time.Second)
 		switch {
-			// invalid expires has no effect so nothing need to be done
-			case exp == 0:
+		// invalid expires has no effect so nothing need to be done
+		case exp == 0:
 
-			// found an expires
-			case exp > 0:
-				if entry.CacheControl.MaxAge <= 0 {
-					entry.CacheControl.MaxAge = exp
-				}
+		// found an expires
+		case exp > 0:
+			if entry.CacheControl.MaxAge <= 0 {
+				entry.CacheControl.MaxAge = exp
+			}
 
-			default:
-				if entry.CacheControl.MaxAge <= 0 && !entry.CacheControl.NoCache {
-					entry.CacheControl.NoStore = true
-				}
+		default:
+			if entry.CacheControl.MaxAge <= 0 && !entry.CacheControl.NoCache {
+				entry.CacheControl.NoStore = true
+			}
 		}
 	}
 
@@ -316,14 +317,14 @@ func NewCacheControl(rawcc string) CacheControl {
 			default:
 				if len(token)>8 && token[0:7] == "max-age" {
 					ma,err := strconv.Atoi(token[8:])
-					if err == nil {
+					if err != nil {
 						continue
 					}
 					cc.MaxAge = int64(ma)
 				}
 				if len(token)>9 && token[0:8] == "s-maxage" {
 					sma,err := strconv.Atoi(token[9:])
-					if err == nil {
+					if err != nil {
 						continue
 					}
 					cc.SMaxAge = int64(sma)
