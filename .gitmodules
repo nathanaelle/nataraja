@@ -1,0 +1,24 @@
+[submodule "vendor/github.com/boltdb/bolt"]
+	path = vendor/github.com/boltdb/bolt
+	url = https://github.com/boltdb/bolt
+[submodule "vendor/github.com/go-fsnotify/fsnotify"]
+	path = vendor/github.com/go-fsnotify/fsnotify
+	url = https://github.com/go-fsnotify/fsnotify
+[submodule "vendor/golang.org/x/net"]
+	path = vendor/golang.org/x/net
+	url = https://go.googlesource.com/net
+[submodule "vendor/golang.org/x/crypto"]
+	path = vendor/golang.org/x/crypto
+	url = https://go.googlesource.com/crypto
+[submodule "vendor/github.com/nathanaelle/pasnet"]
+	path = vendor/github.com/nathanaelle/pasnet
+	url = https://github.com/nathanaelle/pasnet
+[submodule "vendor/github.com/nathanaelle/syslog5424"]
+	path = vendor/github.com/nathanaelle/syslog5424
+	url = https://github.com/nathanaelle/syslog5424
+[submodule "vendor/github.com/nathanaelle/useful.types"]
+	path = vendor/github.com/nathanaelle/useful.types
+	url = https://github.com/nathanaelle/useful.types
+[submodule "vendor/github.com/naoina/toml"]
+	path = vendor/github.com/naoina/toml
+	url = https://github.com/naoina/toml

@@ -22,7 +22,7 @@ import (
 	"./vhost"
 	"./cache"
 
-	"gopkg.in/fsnotify.v1"
+	"github.com/go-fsnotify/fsnotify"
 	"golang.org/x/net/http2"
 
 	syslog	"github.com/nathanaelle/syslog5424"
