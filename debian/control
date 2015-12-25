@@ -1,0 +1,25 @@
+Source: nataraja
+Section: admin
+Priority: extra
+Maintainer: Nathanaelle <nathanaelle@users.noreply.github.com>
+Build-Depends: debhelper (>= 9), golang-go (>=1.5), dh-golang
+Standards-Version: 3.9.1
+Homepage: http://github.com/nathanaelle/nataraja
+Vcs-Browser: http://github.com/nathanaelle/nataraja
+Vcs-Git: http://github.com/nathanaelle/nataraja
+
+Package: nataraja
+Architecture: amd64 armhf
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Built-Using: ${misc:Built-Using}
+Suggests: nataraja-conf
+Description: HTTP reverse proxy
+ Reverse proxy for HTTP 1.1 and 2 with or without TLS support
+
+Package: nataraja-default-conf
+Architecture: all
+Depends: nataraja
+Conflicts: nataraja-conf
+Provides: nataraja-conf
+Description: HTTP reverse proxy - default conf & docs
+ Reverse proxy for HTTP 1.1 and 2 with or without TLS support
