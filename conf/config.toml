@@ -33,3 +33,11 @@ DevLog		= "/dev/log"
 #	not less than 5m
 #	not more than 1d
 RefreshOCSP	= "1h"
+
+#
+#	this is the secret shared between several redondant proxy
+#	to cope with TLS session ticket
+#
+#	if the string is empty, io.Rand will feed it but
+#	in case of restart, all the previous session will be invalidated
+TicketMasterSecret	= "some secret string"

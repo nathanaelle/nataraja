@@ -14,6 +14,11 @@ import (
 	"io/ioutil"
 	"crypto/tls"
 
+	"strconv"
+	"crypto/sha256"
+	"crypto/hmac"
+
+
 	"./vhost"
 	"./cache"
 
@@ -30,35 +35,40 @@ const	DEFAULT_CONF	types.Path	= "/etc/nataraja/config.toml"
 const	DEFAULT_PRIO	syslog.Priority	= (syslog.LOG_DAEMON|syslog.LOG_WARNING)
 const	DEFAULT_DEVLOG	types.Path	= ""
 
+const	derive_list_size	int	= 12
+const	ticket_lifetime		int64	= 1800
 
 type Nataraja struct {
-	Id		string
-	Listen		[]types.IpAddr
-	Proxied		types.URL
-	DevLog		types.Path
-	IncludeVhosts	types.Path
-	RefreshOCSP	types.Duration
+	Id			string
+	Listen			[]types.IpAddr
+	Proxied			types.URL
+	DevLog			types.Path
+	IncludeVhosts		types.Path
+	RefreshOCSP		types.Duration
+	TicketMasterSecret	string
 
-	wg		*sync.WaitGroup
-	conflock	*sync.RWMutex
-	end		<-chan bool
+	wg			*sync.WaitGroup
+	conflock		*sync.RWMutex
+	end			<-chan bool
+	ticket_id		int64
 
-	syslog		*syslog.Syslog
-	log		*log.Logger
+	syslog			*syslog.Syslog
+	log			*log.Logger
 
-	server		*http.Server
-	cache		*cache.Cache
+	server			*http.Server
+	cache			*cache.Cache
 
-	tlspairs	map[string]*vhost.TLSConf
-	file_zones	map[string][]string
-	file_vhost	map[string]*vhost.Vhost
-	servable	map[string]vhost.Servable
+	tlspairs		map[string]*vhost.TLSConf
+	file_zones		map[string][]string
+	file_vhost		map[string]*vhost.Vhost
+	servable		map[string]vhost.Servable
 }
 
 
 func SummonNataraja() (*Nataraja) {
 	nat := &Nataraja {
 		RefreshOCSP:		types.Duration(1*time.Hour),
+		TicketMasterSecret:	rand_b64_string(),
 
 		wg:			new(sync.WaitGroup),
 		conflock:		new(sync.RWMutex),
@@ -100,16 +110,31 @@ func (nat *Nataraja) ReadConfiguration()  {
 		case nat.RefreshOCSP > types.Duration(24*time.Hour):	nat.RefreshOCSP= types.Duration(24*time.Hour)
 	}
 
-	var conn	syslog.Conn
 	switch *stderr {
-		case true:	conn	= syslog.Dial( "stdio", "stderr", syslog.T_LFENDED, 100 )
-		case false:	conn	= syslog.Dial( "local", nat.DevLog.String(), syslog.T_LFENDED, 100 )
+	case true:
+		co,err	:= (syslog.Dialer{
+			QueueLen:	100,
+			FlushDelay:	100*time.Millisecond,
+		}).Dial( "stdio", "stderr", new(syslog.T_LFENDED) )
+
+		if err != nil {
+			log.Fatal(err)
+		}
+		nat.syslog,_ =	syslog.New( co, *priority, APP_NAME )
+
+	case false:
+		co,err	:= (syslog.Dialer{
+			QueueLen:	100,
+			FlushDelay:	100*time.Millisecond,
+		}).Dial( "local", nat.DevLog.String(), new(syslog.T_ZEROENDED) )
+
+		if err != nil {
+			log.Fatal(err)
+		}
+		nat.syslog,_ =	syslog.New( co, *priority, APP_NAME )
+
 	}
 
-	if conn == nil {
-		panic("no log!")
-	}
-	nat.syslog,_ =	syslog.New( conn, *priority, APP_NAME )
 	nat.log = nat.syslog.Channel(syslog.LOG_INFO).Logger("")
 
 
@@ -168,7 +193,7 @@ func (nat *Nataraja) GenerateServer() {
 		ErrorLog	: nat.syslog.SubSyslog("proxy").Channel(syslog.LOG_WARNING).Logger("WARNING: "),
 	}
 
-	nat.cache.Init(&cache.PassThru {})
+	nat.cache.Init(&cache.NaiveMemory {})
 
 	nat.server = &http.Server {
 		Handler:			nat,
@@ -199,6 +224,8 @@ func (nat *Nataraja) GenerateServer() {
 	}
 
 	http2.ConfigureServer( nat.server, &http2.Server {} )
+
+	nat.derive_ticket()
 }
 
 
@@ -207,6 +234,7 @@ func (nat *Nataraja) SignalHandler() {
 
 	go nat.ConfUpdater(nat.end,nat.wg)
 	go nat.OCSPUpdater(nat.end,nat.wg)
+	go nat.TicketUpdater(nat.end,nat.wg)
 }
 
 
@@ -251,6 +279,63 @@ func (nat *Nataraja) ConfUpdater(end <-chan bool,wg  *sync.WaitGroup) {
 }
 
 
+func (nat *Nataraja) TicketUpdater(end <-chan bool,wg  *sync.WaitGroup) {
+	wg.Add(1)
+
+	time.AfterFunc( time.Duration(ticket_lifetime-(time.Now().Unix()%ticket_lifetime)) * time.Second, func(){
+			go func(){
+				defer wg.Done()
+
+				ticker	:= time.Tick( time.Duration(ticket_lifetime) * time.Second)
+				nat.derive_ticket()
+				for {
+					select {
+					case <-ticker:
+						nat.derive_ticket()
+
+					case <-end:
+						return
+					}
+				}
+			}()
+		}  )
+}
+
+
+func (nat *Nataraja) derive_ticket() {
+	if nat.ticket_id == 0 {
+		nat.ticket_id	= time.Now().Unix()/ticket_lifetime
+	} else {
+		nat.ticket_id	+= 1
+	}
+
+	h	:= hmac.New(sha256.New, []byte(nat.TicketMasterSecret))
+
+	list	:= make([][32]byte,derive_list_size,derive_list_size)
+	for i,_ := range list {
+		h.Reset()
+		switch	i {
+		case	0:
+			// the current key
+			h.Write([]byte(strconv.FormatInt((nat.ticket_id)*ticket_lifetime*int64(time.Second),10)))
+
+		case	1:
+			// the next key hidden as old key
+			//
+			// the main idea is to cope with the risk of desync in case of multiple instances
+			h.Write([]byte(strconv.FormatInt((nat.ticket_id+1)*ticket_lifetime*int64(time.Second),10)))
+
+		default:
+			// the old keys
+			h.Write([]byte(strconv.FormatInt((nat.ticket_id-int64(i+1))*ticket_lifetime*int64(time.Second),10)))
+		}
+		copy(list[i][:],h.Sum(nil)[0:32])
+	}
+
+	nat.server.TLSConfig.SetSessionTicketKeys(list)
+}
+
+
 func (nat *Nataraja) OCSPUpdater(end <-chan bool,wg  *sync.WaitGroup) {
 	wg.Add(1)
 	defer wg.Done()
@@ -266,7 +351,6 @@ func (nat *Nataraja) OCSPUpdater(end <-chan bool,wg  *sync.WaitGroup) {
 		}
 	}
 }
-
 
 func (nat *Nataraja) refresh_cert(cert *vhost.TLSConf, wg *sync.WaitGroup, lock *sync.Mutex) {
 	wg.Add(1)

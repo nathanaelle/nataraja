@@ -11,6 +11,8 @@ import (
 	"io/ioutil"
 	"os/signal"
 	"crypto/tls"
+	"crypto/rand"
+	"encoding/base64"
 
 	"github.com/naoina/toml"
 
@@ -69,6 +71,16 @@ func exterminate(err error)  {
 	os.Exit(500)
 
 	//syscall.Kill(syscall.Getpid(),syscall.SIGTERM)
+}
+
+func rand_b64_string() string {
+	var c	[48]byte
+	_,err	:= rand.Read(c[:])
+	if err != nil {
+		panic(err)
+	}
+
+	return base64.StdEncoding.EncodeToString(c[:])
 }
 
 
