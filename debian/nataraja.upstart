@@ -1,0 +1,9 @@
+description "Nataraja HTTP reverse proxy"
+
+start on runlevel [2345]
+stop on runlevel [!2345]
+
+console log
+respawn
+
+exec /usr/sbin/nataraja
