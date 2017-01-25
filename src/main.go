@@ -16,7 +16,7 @@ import (
 
 	"github.com/naoina/toml"
 
-	hatcp	"github.com/nathanaelle/pasnet"
+//	hatcp	"github.com/nathanaelle/pasnet"
 	types	"github.com/nathanaelle/useful.types"
 )
 
@@ -126,7 +126,8 @@ func SignalCatcher() (<-chan bool,<-chan bool)  {
 func forgeHTTP_(ip types.IpAddr) (net.Listener) {
 	addr,err:= ip.ToTCPAddr( "http" )
 	exterminate(err)
-	sock,err:= hatcp.Listen( "tcp", addr )
+//	sock,err:= hatcp.Listen( "tcp", addr )
+	sock,err:= net.ListenTCP( "tcp", addr )
 	exterminate(err)
 
 	return sock
@@ -136,7 +137,8 @@ func forgeHTTP_(ip types.IpAddr) (net.Listener) {
 func forgeHTTPS(ip types.IpAddr, tlsconf *tls.Config) (net.Listener) {
 	addr,err:= ip.ToTCPAddr( "https" )
 	exterminate(err)
-	tcp,err	:= hatcp.Listen( "tcp", addr )
+//	tcp,err	:= hatcp.Listen( "tcp", addr )
+	tcp,err	:= net.ListenTCP( "tcp", addr )
 	exterminate(err)
 	sock	:= tls.NewListener( tcp, tlsconf )
 

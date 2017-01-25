@@ -197,8 +197,8 @@ func (nat *Nataraja) GenerateServer() {
 
 	nat.server = &http.Server {
 		Handler:			nat,
-		ReadTimeout:			10 * time.Minute,
-		WriteTimeout:			10 * time.Minute,
+		ReadTimeout:			1 * time.Minute,
+		WriteTimeout:			1 * time.Minute,
 //		ConnState:			sessionLogger(),
 		ErrorLog:			nat.syslog.SubSyslog("connexion").Channel(syslog.LOG_INFO).Logger("INFO: "),
 		TLSConfig:			&tls.Config{
@@ -441,8 +441,8 @@ func (nat *Nataraja) GetCertificate(clientHello *tls.ClientHelloInfo) (*tls.Cert
 	labels := strings.Split(sni, ".")
 	for i := range labels {
 		labels[i] = "*"
-		sni := strings.Join(labels, ".")
-		if cert, ok := nat.tlspairs[sni]; ok {
+		t_sni := strings.Join(labels, ".")
+		if cert, ok := nat.tlspairs[t_sni]; ok {
 			return cert.Certificate(), nil
 		}
 	}

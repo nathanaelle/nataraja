@@ -255,6 +255,9 @@ func Header_in2out(dst http.Header, headers ...http.Header) {
 			// really old and cargo culted header
 			case "Pragma":
 
+			// safari goes crazy if found it in http/2 connection
+			case "Connection":
+
 			// Nataraja's job - enforce the last only
 			case	"Accept-Ranges", "Public-Key-Pins", "StrictTransportSecurity","X-XSS-Protection":
 				for _, v := range vv {
